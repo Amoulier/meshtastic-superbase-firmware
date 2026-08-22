@@ -1,0 +1,16 @@
+name: Build Muzi Base Buzzer Test
+
+on:
+  push:
+    branches:
+      - build/muzi-base-buzzer-test
+
+permissions: read-all
+
+jobs:
+  build:
+    uses: ./.github/workflows/build_firmware.yml
+    with:
+      version: buzzer-test
+      pio_env: muzi-base
+      platform: nrf52840
