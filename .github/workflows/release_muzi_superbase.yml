@@ -7,9 +7,6 @@ on:
     paths:
       - .github/workflows/release_muzi_superbase.yml
 
-permissions:
-  contents: write
-
 jobs:
   build:
     uses: ./.github/workflows/build_firmware.yml
@@ -21,6 +18,8 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - name: Download Muzi Base firmware
         uses: actions/download-artifact@v8
