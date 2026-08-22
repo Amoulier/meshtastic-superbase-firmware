@@ -254,10 +254,21 @@ bool ExternalNotificationModule::nagging()
 
 void ExternalNotificationModule::stopBuzzerNow()
 {
-    rtttl::stop();
+    // These players are shared with system tones. Only stop them when this module
+    // owns an active buzzer alert; stopping generic LED/vibration output must not
+    // interrupt unrelated audio.
+    if (buzzerShouldAlert) {
+        rtttl::stop();
 #ifdef HAS_I2S
-    audioThread->stop();
+        audioThread->stop();
+
+        // GPIO0 is used as mclk for I2S audio and set to OUTPUT by the sound library
+        // T-Deck uses GPIO0 as trackball button, so restore the mode
+#if defined(T_DECK) || (defined(BUTTON_PIN) && BUTTON_PIN == 0)
+        pinMode(0, INPUT);
 #endif
+#endif
+    }
     if (getExternal(2)) {
         setExternalState(2, false);
     }
@@ -265,14 +276,6 @@ void ExternalNotificationModule::stopBuzzerNow()
     buzzerAlertIsDirectMessage = false;
     buzzerAlertStarted = 0;
     buzzerAlertDurationMs = 0;
-
-#ifdef HAS_I2S
-    // GPIO0 is used as mclk for I2S audio and set to OUTPUT by the sound library
-    // T-Deck uses GPIO0 as trackball button, so restore the mode
-#if defined(T_DECK) || (defined(BUTTON_PIN) && BUTTON_PIN == 0)
-    pinMode(0, INPUT);
-#endif
-#endif
 }
 
 void ExternalNotificationModule::stopNow()
