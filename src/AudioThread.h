@@ -60,6 +60,8 @@ class AudioThread : public concurrency::OSThread
         return true;
     }
 
+    bool isRtttlOwnedBy(RtttlOwner owner) const { return rtttlOwner == owner; }
+
     void stop()
     {
         if (i2sRtttl != nullptr) {
