@@ -92,9 +92,10 @@ void playTonesRTTTL(const ToneDuration *tone_durations, int size)
         strncat(rtttl, noteStr, sizeof(rtttl) - strlen(rtttl) - 1);
 
         audioThread->beginRttl(rtttl, strlen(rtttl));
-        while (audioThread->isPlaying()) {
+        while (audioThread->isPlaying(AudioThread::RtttlOwner::SYSTEM)) {
             delay(10);
         }
+        audioThread->stopRtttlIfOwnedBy(AudioThread::RtttlOwner::SYSTEM);
         return;
     }
 }
