@@ -146,7 +146,8 @@ int32_t ExternalNotificationModule::runOnce()
             if (audioThread->isPlaying()) {
                 // Continue playing
             } else if (isNagging && (nagCycleCutoff >= millis())) {
-                audioThread->beginRttl(rtttlConfig.ringtone, strlen_P(rtttlConfig.ringtone));
+                audioThread->beginRttl(rtttlConfig.ringtone, strlen_P(rtttlConfig.ringtone),
+                                       AudioThread::RtttlOwner::EXTERNAL_NOTIFICATION);
             }
             // we need fast updates to play the RTTTL
             delay = EXT_NOTIFICATION_FAST_THREAD_MS;
@@ -259,7 +260,7 @@ void ExternalNotificationModule::stopBuzzerNow()
     if (buzzerShouldAlert) {
         rtttl::stop();
 #ifdef HAS_I2S
-        audioThread->stop();
+        audioThread->stopRtttlIfOwnedBy(AudioThread::RtttlOwner::EXTERNAL_NOTIFICATION);
 
         // GPIO0 is used as mclk for I2S audio and set to OUTPUT by the sound library
         // T-Deck uses GPIO0 as trackball button, so restore the mode
@@ -470,7 +471,8 @@ ProcessMessage ExternalNotificationModule::handleReceived(const meshtastic_MeshP
                 LOG_INFO("externalNotificationModule - Buzzer alert");
                 if (moduleConfig.external_notification.use_i2s_as_buzzer) {
 #ifdef HAS_I2S
-                    audioThread->beginRttl(rtttlConfig.ringtone, strlen_P(rtttlConfig.ringtone));
+                    audioThread->beginRttl(rtttlConfig.ringtone, strlen_P(rtttlConfig.ringtone),
+                                           AudioThread::RtttlOwner::EXTERNAL_NOTIFICATION);
 #endif
                 } else if (moduleConfig.external_notification.use_pwm) {
                     rtttl::begin(config.device.buzzer_gpio, rtttlConfig.ringtone);
