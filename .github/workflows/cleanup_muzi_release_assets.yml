@@ -1,0 +1,45 @@
+name: Clean MuziWorks Superbase release assets
+
+on:
+  push:
+    branches:
+      - fix/superbase-power-and-buzzer-2.7.26
+    paths:
+      - .github/workflows/cleanup_muzi_release_assets.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: v2.7.26-superbase.1
+      BUNDLE_NAME: firmware-muzi-base-v2.7.26-superbase.1.zip
+    steps:
+      - name: Repack Muzi Base bundle
+        run: |
+          set -euo pipefail
+          mkdir -p bundle unpacked
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$BUNDLE_NAME" --dir bundle
+          unzip -q "bundle/$BUNDLE_NAME" -d unpacked
+          rm -f unpacked/Meshtastic_nRF52_factory_erase_v3_S140_6.1.0.uf2
+          rm -f unpacked/Meshtastic_nRF52_factory_erase_v3_S140_7.3.0.uf2
+          rm -f unpacked/update-lilygo_techo_bootloader-0.6.1_nosd.uf2
+          (cd unpacked && zip -q -9 -r "../$BUNDLE_NAME" .)
+          gh release upload "$RELEASE_TAG" "$BUNDLE_NAME" --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Remove unrelated direct-download assets
+        run: |
+          set -euo pipefail
+          for asset_name in \
+            Meshtastic_nRF52_factory_erase_v3_S140_6.1.0.uf2 \
+            Meshtastic_nRF52_factory_erase_v3_S140_7.3.0.uf2 \
+            update-lilygo_techo_bootloader-0.6.1_nosd.uf2; do
+            asset_id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" \
+              --jq ".assets[] | select(.name == \"$asset_name\") | .id")
+            if [[ -n "$asset_id" ]]; then
+              gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+            fi
+          done
