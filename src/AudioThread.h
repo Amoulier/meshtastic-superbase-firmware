@@ -31,17 +31,17 @@ class AudioThread : public concurrency::OSThread
     void beginRttl(const void *data, uint32_t len, RtttlOwner owner = RtttlOwner::SYSTEM)
     {
         concurrency::LockGuard guard(&rtttlLock);
-        if (i2sRtttl != nullptr) {
-            i2sRtttl->stop();
+        beginRttlUnlocked(data, len, owner);
+    }
+
+    bool beginRttlIfIdle(const void *data, uint32_t len, RtttlOwner owner = RtttlOwner::SYSTEM)
+    {
+        concurrency::LockGuard guard(&rtttlLock);
+        if (isPlayingUnlocked()) {
+            return false;
         }
-#ifdef T_LORA_PAGER
-        io.digitalWrite(EXPANDS_AMP_EN, HIGH);
-#endif
-        setCPUFast(true);
-        rtttlFile = std::unique_ptr<AudioFileSourcePROGMEM>(new AudioFileSourcePROGMEM(data, len));
-        i2sRtttl = std::unique_ptr<AudioGeneratorRTTTL>(new AudioGeneratorRTTTL());
-        rtttlOwner = owner;
-        i2sRtttl->begin(rtttlFile.get(), audioOut.get());
+        beginRttlUnlocked(data, len, owner);
+        return true;
     }
 
     // Also handles actually playing the RTTTL, needs to be called in loop
@@ -107,6 +107,21 @@ class AudioThread : public concurrency::OSThread
     }
 
   private:
+    void beginRttlUnlocked(const void *data, uint32_t len, RtttlOwner owner)
+    {
+        if (i2sRtttl != nullptr) {
+            i2sRtttl->stop();
+        }
+#ifdef T_LORA_PAGER
+        io.digitalWrite(EXPANDS_AMP_EN, HIGH);
+#endif
+        setCPUFast(true);
+        rtttlFile = std::unique_ptr<AudioFileSourcePROGMEM>(new AudioFileSourcePROGMEM(data, len));
+        i2sRtttl = std::unique_ptr<AudioGeneratorRTTTL>(new AudioGeneratorRTTTL());
+        rtttlOwner = owner;
+        i2sRtttl->begin(rtttlFile.get(), audioOut.get());
+    }
+
     bool isPlayingUnlocked()
     {
         if (i2sRtttl == nullptr) {
