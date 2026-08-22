@@ -80,11 +80,9 @@ int32_t ExternalNotificationModule::runOnce()
         // audioThread->isPlaying() also handles actually playing the RTTTL, needs to be called in loop
         isRtttlPlaying = isRtttlPlaying || audioThread->isPlaying();
 #endif
-        const bool buzzerWindowActive =
-            buzzerShouldAlert &&
-            buzzerModeAllowsNotification(config.device.buzzer_mode, buzzerAlertIsDirectMessage) &&
-            Throttle::isWithinTimespanMs(buzzerAlertStarted, buzzerAlertDurationMs);
-        if (buzzerShouldAlert && !buzzerWindowActive) {
+        const bool buzzerModeAllowed = buzzerModeAllowsNotification(config.device.buzzer_mode, buzzerAlertIsDirectMessage);
+        const bool buzzerWindowExpired = !Throttle::isWithinTimespanMs(buzzerAlertStarted, buzzerAlertDurationMs);
+        if (buzzerShouldAlert && (!buzzerModeAllowed || (buzzerWindowExpired && !isRtttlPlaying))) {
             stopBuzzerNow();
             isRtttlPlaying = false;
         }
