@@ -158,9 +158,11 @@ int32_t ExternalNotificationModule::runOnce()
         if (moduleConfig.external_notification.use_i2s_as_buzzer && buzzerShouldAlert) {
             if (audioThread->isPlaying()) {
                 // Continue playing
-            } else if (isNagging && (nagCycleCutoff >= millis())) {
-                audioThread->beginRttl(rtttlConfig.ringtone, strlen_P(rtttlConfig.ringtone),
-                                       AudioThread::RtttlOwner::EXTERNAL_NOTIFICATION);
+            } else if (isNagging && (nagCycleCutoff >= millis()) &&
+                       (!buzzerPlaybackStarted || moduleConfig.external_notification.nag_timeout) &&
+                       audioThread->beginRttlIfIdle(rtttlConfig.ringtone, strlen_P(rtttlConfig.ringtone),
+                                                    AudioThread::RtttlOwner::EXTERNAL_NOTIFICATION)) {
+                buzzerPlaybackStarted = true;
                 buzzerPlaybackBackend = BuzzerPlaybackBackend::I2S;
             }
             // we need fast updates to play the RTTTL
@@ -171,9 +173,11 @@ int32_t ExternalNotificationModule::runOnce()
         if (moduleConfig.external_notification.use_pwm && config.device.buzzer_gpio && buzzerShouldAlert) {
             if (rtttl::isPlaying()) {
                 rtttl::play();
-            } else if (isNagging && (nagCycleCutoff >= millis())) {
+            } else if (isNagging && (nagCycleCutoff >= millis()) &&
+                       (!buzzerPlaybackStarted || moduleConfig.external_notification.nag_timeout)) {
                 // start the song again if we have time left
                 rtttl::begin(config.device.buzzer_gpio, rtttlConfig.ringtone);
+                buzzerPlaybackStarted = true;
                 buzzerPlaybackBackend = BuzzerPlaybackBackend::PWM;
             }
             // we need fast updates to play the RTTTL
@@ -295,6 +299,7 @@ void ExternalNotificationModule::stopBuzzerNow()
     }
     buzzerPlaybackBackend = BuzzerPlaybackBackend::NONE;
     buzzerShouldAlert = false;
+    buzzerPlaybackStarted = false;
     buzzerAlertIsDirectMessage = false;
     buzzerAlertStarted = 0;
     buzzerAlertDurationMs = 0;
@@ -465,6 +470,7 @@ ProcessMessage ExternalNotificationModule::handleReceived(const meshtastic_MeshP
                 isNagging = true;
                 if (currentBuzzerShouldAlert) {
                     buzzerShouldAlert = true;
+                    buzzerPlaybackStarted = false;
                     buzzerAlertIsDirectMessage = isDmToUs;
                     buzzerAlertStarted = alertStarted;
                     buzzerAlertDurationMs = alertDuration;
@@ -496,15 +502,19 @@ ProcessMessage ExternalNotificationModule::handleReceived(const meshtastic_MeshP
                 LOG_INFO("externalNotificationModule - Buzzer alert");
                 if (moduleConfig.external_notification.use_i2s_as_buzzer) {
 #ifdef HAS_I2S
-                    audioThread->beginRttl(rtttlConfig.ringtone, strlen_P(rtttlConfig.ringtone),
-                                           AudioThread::RtttlOwner::EXTERNAL_NOTIFICATION);
-                    buzzerPlaybackBackend = BuzzerPlaybackBackend::I2S;
+                    if (audioThread->beginRttlIfIdle(rtttlConfig.ringtone, strlen_P(rtttlConfig.ringtone),
+                                                     AudioThread::RtttlOwner::EXTERNAL_NOTIFICATION)) {
+                        buzzerPlaybackStarted = true;
+                        buzzerPlaybackBackend = BuzzerPlaybackBackend::I2S;
+                    }
 #endif
                 } else if (moduleConfig.external_notification.use_pwm && config.device.buzzer_gpio) {
                     rtttl::begin(config.device.buzzer_gpio, rtttlConfig.ringtone);
+                    buzzerPlaybackStarted = true;
                     buzzerPlaybackBackend = BuzzerPlaybackBackend::PWM;
                 } else {
                     setExternalState(2, true);
+                    buzzerPlaybackStarted = true;
                     buzzerPlaybackBackend = BuzzerPlaybackBackend::DIGITAL;
                 }
             }
