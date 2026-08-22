@@ -254,9 +254,8 @@ bool ExternalNotificationModule::nagging()
 
 void ExternalNotificationModule::stopBuzzerNow()
 {
-    // These players are shared with system tones. Only stop them when this module
-    // owns an active buzzer alert; stopping generic LED/vibration output must not
-    // interrupt unrelated audio.
+    // Only an active buzzer alert owned by this module may stop the shared
+    // players; generic output cleanup must leave unrelated audio running.
     if (buzzerShouldAlert) {
         rtttl::stop();
 #ifdef HAS_I2S
