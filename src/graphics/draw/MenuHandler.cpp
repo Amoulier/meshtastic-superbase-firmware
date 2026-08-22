@@ -962,7 +962,6 @@ void menuHandler::homeBaseMenu()
         if (selected == Mute) {
             if (moduleConfig.external_notification.enabled && externalNotificationModule) {
                 externalNotificationModule->setMute(!externalNotificationModule->getMute());
-                IF_SCREEN(if (!externalNotificationModule->getMute()) externalNotificationModule->stopNow();)
             }
         } else if (selected == Backlight) {
             screen->setOn(false);

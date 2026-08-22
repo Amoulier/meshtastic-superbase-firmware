@@ -1,7 +1,7 @@
 #pragma once
 
 void playBeep();
-void playLongBeep();
+void playLongBeep(bool isDirectMessage = false);
 void playStartMelody();
 void playShutdownMelody();
 void playGPSEnableBeep();

@@ -1730,7 +1730,7 @@ int Screen::handleTextMessage(const meshtastic_MeshPacket *packet)
                 if (config.device.buzzer_mode != meshtastic_Config_DeviceConfig_BuzzerMode_DIRECT_MSG_ONLY ||
                     (isAlert && moduleConfig.external_notification.alert_bell_buzzer) ||
                     (!isBroadcast(packet->to) && isToUs(packet))) {
-                    playLongBeep();
+                    playLongBeep(!isBroadcast(packet->to) && isToUs(packet));
                 }
 #endif
             } else {
@@ -1761,7 +1761,7 @@ int Screen::handleTextMessage(const meshtastic_MeshPacket *packet)
                         // Beep if not in DIRECT_MSG_ONLY mode or if in DIRECT_MSG_ONLY mode and either
                         // - packet contains an alert and alert bell buzzer is enabled
                         // - packet is a non-broadcast that is addressed to this node
-                        playLongBeep();
+                        playLongBeep(!isBroadcast(packet->to) && isToUs(packet));
                     }
 #else
                     screen->showSimpleBanner(banner, 3000);

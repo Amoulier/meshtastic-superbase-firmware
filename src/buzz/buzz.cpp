@@ -1,4 +1,5 @@
 #include "buzz.h"
+#include "BuzzerMode.h"
 #include "NodeDB.h"
 #include "configuration.h"
 
@@ -99,11 +100,11 @@ void playTonesRTTTL(const ToneDuration *tone_durations, int size)
 }
 #endif
 
-void playTones(const ToneDuration *tone_durations, int size)
+void playTones(const ToneDuration *tone_durations, int size, bool isNotification = false, bool isDirectMessage = false)
 {
-    if (config.device.buzzer_mode == meshtastic_Config_DeviceConfig_BuzzerMode_DISABLED ||
-        config.device.buzzer_mode == meshtastic_Config_DeviceConfig_BuzzerMode_NOTIFICATIONS_ONLY) {
-        // Buzzer is disabled or not set to system tones
+    const bool allowed = isNotification ? buzzerModeAllowsNotification(config.device.buzzer_mode, isDirectMessage)
+                                        : buzzerModeAllowsSystemTones(config.device.buzzer_mode);
+    if (!allowed) {
         return;
     }
 #ifdef HAS_I2S
@@ -132,10 +133,10 @@ void playBeep()
     playTones(melody, sizeof(melody) / sizeof(ToneDuration));
 }
 
-void playLongBeep()
+void playLongBeep(bool isDirectMessage)
 {
     ToneDuration melody[] = {{NOTE_B3, DURATION_1_1}};
-    playTones(melody, sizeof(melody) / sizeof(ToneDuration));
+    playTones(melody, sizeof(melody) / sizeof(ToneDuration), true, isDirectMessage);
 }
 
 void playGPSEnableBeep()
