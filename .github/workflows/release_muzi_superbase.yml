@@ -1,0 +1,69 @@
+name: Release MuziWorks Superbase 2.7.26
+
+on:
+  push:
+    branches:
+      - fix/superbase-power-and-buzzer-2.7.26
+    paths:
+      - .github/workflows/release_muzi_superbase.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/build_firmware.yml
+    with:
+      version: 2.7.26-superbase.1
+      platform: nrf52840
+      pio_env: muzi-base
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download Muzi Base firmware
+        uses: actions/download-artifact@v8
+        with:
+          name: firmware-nrf52840-muzi-base-2.7.26-superbase.1
+          path: release-assets
+
+      - name: Create complete firmware bundle
+        run: zip -j -9 firmware-muzi-base-v2.7.26-superbase.1.zip release-assets/*
+
+      - name: Publish prerelease
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v2.7.26-superbase.1
+          target_commitish: ${{ github.sha }}
+          name: Meshtastic 2.7.26 for MuziWorks Superbase — Power and Buzzer Fixes
+          prerelease: true
+          generate_release_notes: false
+          body: |
+            Custom Meshtastic 2.7.26 build for the MuziWorks Superbase (`muzi-base`).
+
+            ## Included improvements
+
+            - Corrects **DMs Only** so the buzzer sounds only for direct messages addressed to the node.
+            - Centralizes the buzzer-mode policy for All Enabled, All Disabled, Notifications, System Only, and DMs Only.
+            - Prevents zero-timeout RTTTL alerts from repeating continuously.
+            - Adds safe RTTTL and buzzer backend ownership to avoid overlapping or unrelated audio activity.
+            - Keeps the GPS power rail off when GPS is disabled or unused.
+            - Changes the Muzi Base default screen timeout to 30 seconds.
+            - Reduces idle ICM20948 polling to 1 Hz while the sensor is sleeping.
+
+            **RX Boosted Gain was not modified.**
+
+            ## Validation
+
+            The direct-message buzzer behavior was validated on a physical MuziWorks Superbase. Battery-life improvement still depends on node configuration, traffic, screen use, GPS use, and MQTT connectivity, so field runtime should be measured after installation.
+
+            ## Installation
+
+            Download the `.uf2` file, place the Superbase in its UF2/DFU bootloader, and copy the firmware to the mounted drive. Back up the node configuration before updating.
+
+            This is an unofficial prerelease from the fork and is not an official Meshtastic stable release.
+          files: |
+            firmware-muzi-base-v2.7.26-superbase.1.zip
+            release-assets/*.uf2
+            release-assets/*.mt.json
