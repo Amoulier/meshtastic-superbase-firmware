@@ -5,6 +5,8 @@ on:
     branches:
       - build/muzi-base-buzzer-test-2.7.26
 
+run-name: Muzi Base 2.7.26 buzzer test
+
 permissions: read-all
 
 jobs:
