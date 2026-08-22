@@ -9,6 +9,7 @@ on:
 
 jobs:
   build:
+    permissions: read-all
     uses: ./.github/workflows/build_firmware.yml
     with:
       version: 2.7.26-superbase.1
