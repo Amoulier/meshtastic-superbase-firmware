@@ -1,0 +1,37 @@
+name: Internal Superbase develop integration
+
+on:
+  push:
+    branches:
+      - "integration/muzi-base-superbase5-20260829"
+
+permissions:
+  contents: write
+
+jobs:
+  merge-develop:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout integration branch
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: integration/muzi-base-superbase5-20260829
+
+      - name: Merge current develop preserving Superbase conflict hunks
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin develop
+          git merge --no-commit --no-ff -X ours origin/develop
+          git rm .github/workflows/integrate_develop_internal.yml
+          if git grep -nE '^(<<<<<<<|=======|>>>>>>>)' -- ':!*.patch' ':!*.diff'; then
+            echo "Unresolved merge markers found" >&2
+            exit 1
+          fi
+          git diff --check --cached
+          git commit -m "merge(superbase): integrate current develop baseline"
+          git push origin HEAD:integration/muzi-base-superbase5-20260829
