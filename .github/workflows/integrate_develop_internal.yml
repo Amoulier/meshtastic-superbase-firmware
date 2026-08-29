@@ -11,7 +11,7 @@ permissions:
 jobs:
   merge-develop:
     if: github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-slim
     steps:
       - name: Checkout integration branch
         uses: actions/checkout@v7
