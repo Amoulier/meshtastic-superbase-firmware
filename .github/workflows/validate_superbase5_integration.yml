@@ -1,0 +1,84 @@
+name: Validate Superbase 5 integration
+
+on:
+  push:
+    branches:
+      - "integration/muzi-base-superbase5-merge-20260829"
+    paths:
+      - .github/workflows/validate_superbase5_integration.yml
+
+permissions: read-all
+
+jobs:
+  integration-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Audit integration delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin develop
+          echo "=== Custom delta vs develop ==="
+          git diff --name-status origin/develop...HEAD
+          echo "=== Diff integrity ==="
+          git diff --check origin/develop...HEAD
+          if git grep -n -E '^(<<<<<<<|>>>>>>>)' -- ':!*.md'; then
+            echo "Merge conflict marker found" >&2
+            exit 1
+          fi
+          python - <<'PY'
+          from pathlib import Path
+
+          required = {
+              "src/AudioThread.h": ["SPILock.h", "RtttlOwner", "rtttlLock"],
+              "src/modules/ExternalNotificationModule.cpp": ["buzzerModeAllowsNotification", "stopBuzzerNow", "Time::getMillis"],
+              "src/modules/ExternalNotificationModule.h": ["BuzzerPlaybackBackend", "buzzerAlertIsDirectMessage"],
+              "src/motion/ICM20948Sensor.cpp": ["MUZI_BASE", "AK09916_mode_power_down", "AK09916_mode_cont_100hz"],
+              "test/test_packet_signing/test_main.cpp": ["sendAckNak", "meshtastic_MeshPacket"],
+          }
+          for name, markers in required.items():
+              data = Path(name).read_text(encoding="utf-8")
+              if name.endswith("test_main.cpp") and len(data) < 20000:
+                  raise SystemExit(f"{name} unexpectedly small: {len(data)} bytes")
+              missing = [m for m in markers if m not in data]
+              if missing:
+                  raise SystemExit(f"{name} missing required markers: {missing}")
+              print(f"OK {name}: {len(data)} bytes")
+          PY
+
+  native-critical:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - name: Setup native build
+        uses: ./.github/actions/setup-native
+      - name: Disable BUILD_EPOCH
+        run: sed -i 's/-DBUILD_EPOCH=$UNIX_TIME/#-DBUILD_EPOCH=$UNIX_TIME/' platformio.ini
+      - name: Run Superbase-relevant native suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout --signal=TERM --kill-after=30s 35m platformio test -e coverage \
+            --filter test_buzzer_mode \
+            --filter test_mqtt \
+            --filter test_reliable_ack_matrix \
+            --filter test_mesh_module \
+            --filter test_packet_signing \
+            --filter test_nexthop_routing \
+            --filter test_radio \
+            --filter test_position_module \
+            --filter test_uptime_clock
+
+  build-muzi-base:
+    uses: ./.github/workflows/build_firmware.yml
+    with:
+      version: 2.8.0-superbase.5-integration-audit
+      platform: nrf52840
+      pio_env: muzi-base
