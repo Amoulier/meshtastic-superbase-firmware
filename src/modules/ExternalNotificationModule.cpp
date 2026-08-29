@@ -64,15 +64,16 @@ bool ascending = true;
 
 #define ASCII_BELL 0x07
 
+#if !MESHTASTIC_EXCLUDE_RTTTL
 meshtastic_RTTTLConfig rtttlConfig;
+static const char *rtttlConfigFile = "/prefs/ringtone.proto";
+#endif
 
 ExternalNotificationModule *externalNotificationModule;
 
 bool externalCurrentState[3] = {};
 
 uint32_t externalTurnedOn[3] = {};
-
-static const char *rtttlConfigFile = "/prefs/ringtone.proto";
 
 int32_t ExternalNotificationModule::runOnce()
 {
@@ -189,7 +190,7 @@ int32_t ExternalNotificationModule::runOnce()
             delay = EXT_NOTIFICATION_FAST_THREAD_MS;
         }
 #endif
-#if defined(HAS_I2S_SPEAKER_NRF52)
+#if defined(HAS_I2S_SPEAKER_NRF52) && !MESHTASTIC_EXCLUDE_RTTTL
         // Play RTTTL over the I2S speaker (no piezo on this board).
         if (canBuzz() && buzzerShouldAlert) {
             if (nrf52RtttlPlayer.isPlaying()) {
@@ -203,6 +204,7 @@ int32_t ExternalNotificationModule::runOnce()
             delay = EXT_NOTIFICATION_FAST_THREAD_MS;
         }
 #endif
+#if !MESHTASTIC_EXCLUDE_RTTTL
         // now let the PWM buzzer play
         if (moduleConfig.external_notification.use_pwm && config.device.buzzer_gpio && canBuzz() && buzzerShouldAlert) {
             if (rtttl::isPlaying()) {
@@ -217,6 +219,7 @@ int32_t ExternalNotificationModule::runOnce()
             // we need fast updates to play the RTTTL
             delay = EXT_NOTIFICATION_FAST_THREAD_MS;
         }
+#endif
 
         return delay;
     }
@@ -280,7 +283,9 @@ void ExternalNotificationModule::setExternalState(uint8_t index, bool on)
         blue = 0;
         white = 0;
     }
-    ambientLightingThread->setLighting(moduleConfig.ambient_lighting.current, red, green, blue);
+    if (ambientLightingThread) {
+        ambientLightingThread->setLighting(moduleConfig.ambient_lighting.current, red, green, blue);
+    }
 #endif
 
 #ifdef HAS_DRV2605
@@ -396,16 +401,18 @@ ExternalNotificationModule::ExternalNotificationModule()
     // moduleConfig.external_notification.alert_message_buzzer = true;
 
     if (moduleConfig.external_notification.enabled) {
-#if !defined(MESHTASTIC_EXCLUDE_INPUTBROKER)
+#if !MESHTASTIC_EXCLUDE_INPUTBROKER
         if (inputBroker) // put our callback in the inputObserver list
             inputObserver.observe(inputBroker);
 #endif
+#if !MESHTASTIC_EXCLUDE_RTTTL
         if (nodeDB->loadProto(rtttlConfigFile, meshtastic_RTTTLConfig_size, sizeof(meshtastic_RTTTLConfig),
                               &meshtastic_RTTTLConfig_msg, &rtttlConfig) != LoadFileResult::LOAD_SUCCESS) {
             memset(rtttlConfig.ringtone, 0, sizeof(rtttlConfig.ringtone));
             // The default ringtone is always loaded from userPrefs.jsonc
             strncpy(rtttlConfig.ringtone, USERPREFS_RINGTONE_RTTTL, sizeof(rtttlConfig.ringtone));
         }
+#endif
 
         LOG_INFO("Init External Notification Module");
 
@@ -670,6 +677,7 @@ AdminMessageHandleResult ExternalNotificationModule::handleAdminMessageForModule
     AdminMessageHandleResult result;
 
     switch (request->which_payload_variant) {
+#if !MESHTASTIC_EXCLUDE_RTTTL
     case meshtastic_AdminMessage_get_ringtone_request_tag:
         LOG_INFO("Client getting ringtone");
         this->handleGetRingtone(mp, response);
@@ -681,6 +689,7 @@ AdminMessageHandleResult ExternalNotificationModule::handleAdminMessageForModule
         this->handleSetRingtone(request->set_canned_message_module_messages);
         result = AdminMessageHandleResult::HANDLED;
         break;
+#endif
 
     default:
         result = AdminMessageHandleResult::NOT_HANDLED;
@@ -689,6 +698,7 @@ AdminMessageHandleResult ExternalNotificationModule::handleAdminMessageForModule
     return result;
 }
 
+#if !MESHTASTIC_EXCLUDE_RTTTL
 void ExternalNotificationModule::handleGetRingtone(const meshtastic_MeshPacket &req, meshtastic_AdminMessage *response)
 {
     LOG_INFO("*** handleGetRingtone");
@@ -712,7 +722,9 @@ void ExternalNotificationModule::handleSetRingtone(const char *from_msg)
         nodeDB->saveProto(rtttlConfigFile, meshtastic_RTTTLConfig_size, &meshtastic_RTTTLConfig_msg, &rtttlConfig);
     }
 }
+#endif
 
+#if !MESHTASTIC_EXCLUDE_INPUTBROKER
 int ExternalNotificationModule::handleInputEvent(const InputEvent *event)
 {
     if (nagCycleCutoff != UINT32_MAX) {
@@ -721,3 +733,4 @@ int ExternalNotificationModule::handleInputEvent(const InputEvent *event)
     }
     return 0;
 }
+#endif
