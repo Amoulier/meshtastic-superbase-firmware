@@ -1,0 +1,54 @@
+name: Internal fix Superbase RTTTL exclusion compatibility
+
+on:
+  push:
+    branches:
+      - "release/muzi-base-2.8.0-superbase.5"
+    paths:
+      - .github/workflows/internal_fix_superbase_rtttl_config.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Patch RTTTL config declaration and retrigger release validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          source = Path("src/modules/ExternalNotificationModule.cpp")
+          text = source.read_text(encoding="utf-8")
+          old = '''#if !MESHTASTIC_EXCLUDE_RTTTL
+          meshtastic_RTTTLConfig rtttlConfig;
+          static const char *rtttlConfigFile = "/prefs/ringtone.proto";
+          #endif
+          '''
+          new = '''// Keep the RTTTL config storage available to the shared buzzer ownership paths.
+          // Loading from preferences remains disabled when RTTTL support is compile-excluded.
+          meshtastic_RTTTLConfig rtttlConfig;
+          #if !MESHTASTIC_EXCLUDE_RTTTL
+          static const char *rtttlConfigFile = "/prefs/ringtone.proto";
+          #endif
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(f"Expected one RTTTL declaration block, found {text.count(old)}")
+          source.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          release = Path(".github/workflows/release_muzi_superbase_2_8_0_5.yml")
+          release.write_text(release.read_text(encoding="utf-8") + "\n# retry after RTTTL exclusion compatibility fix\n", encoding="utf-8")
+          PY
+          rm .github/workflows/internal_fix_superbase_rtttl_config.yml
+          git config user.name "Amoulier"
+          git config user.email "Amoulier@gmail.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix(superbase): keep RTTTL config available in excluded native builds"
+          git push origin HEAD:release/muzi-base-2.8.0-superbase.5
