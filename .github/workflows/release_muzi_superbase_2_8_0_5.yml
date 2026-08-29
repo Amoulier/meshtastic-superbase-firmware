@@ -172,3 +172,5 @@ jobs:
             curated-release-assets/firmware-muzi-base-*.mt.json
             curated-release-assets/firmware-muzi-base-*-ota.zip
           fail_on_unmatched_files: true
+
+# Validation rerun after RTTTL exclusion compatibility fix
