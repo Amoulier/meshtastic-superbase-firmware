@@ -1,0 +1,34 @@
+name: Promote current custom releases
+
+on:
+  push:
+    branches:
+      - "release/muzi-base-2.8.0-superbase.5"
+    paths:
+      - .github/workflows/promote_current_custom_releases.yml
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Convert current releases to normal releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for tag in heltec-v4-power-v2.8.0.3 v2.8.0-superbase.5; do
+            release_json="$(gh api "repos/$GH_REPO/releases/tags/$tag")"
+            release_id="$(jq -r '.id' <<<"$release_json")"
+            body="$(jq -r '.body // ""' <<<"$release_json")"
+            body="${body//prerelease/release}"
+            body="${body//Pre-release/Release}"
+            body="${body//pre-release/release}"
+            jq -n --arg body "$body" '{prerelease:false,body:$body}' > /tmp/release-patch.json
+            gh api --method PATCH "repos/$GH_REPO/releases/$release_id" --input /tmp/release-patch.json >/dev/null
+            echo "Promoted $tag to a normal release"
+          done
