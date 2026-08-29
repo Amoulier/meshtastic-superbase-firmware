@@ -1,5 +1,6 @@
 #pragma once
 #include "PowerFSM.h"
+#include "SPILock.h"
 #include "concurrency/Lock.h"
 #include "concurrency/LockGuard.h"
 #include "concurrency/OSThread.h"
