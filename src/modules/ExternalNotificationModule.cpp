@@ -64,8 +64,10 @@ bool ascending = true;
 
 #define ASCII_BELL 0x07
 
-#if !MESHTASTIC_EXCLUDE_RTTTL
+// Keep the RTTTL config storage available to the shared buzzer ownership paths.
+// Loading from preferences remains disabled when RTTTL support is compile-excluded.
 meshtastic_RTTTLConfig rtttlConfig;
+#if !MESHTASTIC_EXCLUDE_RTTTL
 static const char *rtttlConfigFile = "/prefs/ringtone.proto";
 #endif
 
