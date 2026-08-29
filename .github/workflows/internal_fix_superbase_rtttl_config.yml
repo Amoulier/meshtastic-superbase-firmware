@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: Patch RTTTL config declaration and retrigger release validation
+      - name: Patch RTTTL config declaration
         shell: bash
         run: |
           set -euo pipefail
@@ -41,14 +41,10 @@ jobs:
           if text.count(old) != 1:
               raise SystemExit(f"Expected one RTTTL declaration block, found {text.count(old)}")
           source.write_text(text.replace(old, new, 1), encoding="utf-8")
-
-          release = Path(".github/workflows/release_muzi_superbase_2_8_0_5.yml")
-          release.write_text(release.read_text(encoding="utf-8") + "\n# retry after RTTTL exclusion compatibility fix\n", encoding="utf-8")
           PY
-          rm .github/workflows/internal_fix_superbase_rtttl_config.yml
           git config user.name "Amoulier"
           git config user.email "Amoulier@gmail.com"
-          git add -A
+          git add src/modules/ExternalNotificationModule.cpp
           git diff --cached --check
           git commit -m "fix(superbase): keep RTTTL config available in excluded native builds"
           git push origin HEAD:release/muzi-base-2.8.0-superbase.5
