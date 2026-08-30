@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - develop
-      - cleanup/superbase-only-20260830
   pull_request:
     branches:
       - develop
