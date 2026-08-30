@@ -65,6 +65,14 @@ jobs:
           if missing:
               raise SystemExit(f"platformio.ini missing required Superbase scope markers: {missing}")
 
+          native_config = Path("variants/native/portduino.ini").read_text(encoding="utf-8")
+          if "[env:superbase-native-tests]" not in native_config:
+              raise SystemExit("Superbase native regression environment is missing")
+          forbidden_native_envs = ["[env:native]", "[env:coverage]", "[env:native-tft]", "[env:native-macos]", "[env:native-windows]", "[env:native-wasm]"]
+          present_forbidden = [env for env in forbidden_native_envs if env in native_config]
+          if present_forbidden:
+              raise SystemExit(f"Generic native targets reintroduced: {present_forbidden}")
+
           required_source = {
               "src/motion/ICM20948Sensor.cpp": ["MUZI_BASE", "AK09916_mode_power_down", "AK09916_mode_cont_100hz"],
               "src/modules/ExternalNotificationModule.cpp": ["buzzerModeAllowsNotification", "stopBuzzerNow", "buzzerAlertIsDirectMessage"],
@@ -103,7 +111,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          timeout --signal=TERM --kill-after=30s 35m platformio test -e coverage \
+          timeout --signal=TERM --kill-after=30s 35m platformio test -e superbase-native-tests \
             --filter test_buzzer_mode \
             --filter test_mqtt \
             --filter test_reliable_ack_matrix \
