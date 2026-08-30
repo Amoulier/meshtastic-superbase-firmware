@@ -20,50 +20,21 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Prune hardware variants to Superbase plus native test support
+      - name: Prune board catalog to MuziWorks Superbase
         shell: bash
         run: |
           set -euo pipefail
 
-          for path in variants/*; do
-            [[ -d "$path" ]] || continue
-            name="$(basename "$path")"
-            case "$name" in
-              nrf52840|native) ;;
-              *) rm -rf "$path" ;;
-            esac
-          done
+          find boards -maxdepth 1 -type f ! -name 'muzi-base.json' -delete
 
-          for path in variants/nrf52840/*; do
-            name="$(basename "$path")"
-            case "$name" in
-              muzi_base|cpp_overrides|nrf52.ini|nrf52840.ini) ;;
-              *) rm -rf "$path" ;;
-            esac
-          done
+          test -f boards/muzi-base.json
+          test "$(find boards -maxdepth 1 -type f | wc -l)" -eq 1
+          test "$(find variants -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort | tr '\n' ' ')" = "native nrf52840 "
 
-          python - <<'PY'
-          from pathlib import Path
-          p = Path("platformio.ini")
-          text = p.read_text(encoding="utf-8")
-          text = text.replace("default_envs = heltec-v3", "default_envs = muzi-base", 1)
-          start = text.index("extra_configs =\n")
-          marker = "\ndescription = Meshtastic"
-          end = text.index(marker, start)
-          replacement = (
-              "extra_configs =\n"
-              "\tvariants/native/portduino.ini\n"
-              "\tvariants/nrf52840/nrf52.ini\n"
-              "\tvariants/nrf52840/nrf52840.ini\n"
-              "\tvariants/nrf52840/muzi_base/platformio.ini\n"
-          )
-          text = text[:start] + replacement + text[end:]
-          text = text.replace("description = Meshtastic", "description = MuziWorks Superbase Meshtastic firmware", 1)
-          p.write_text(text, encoding="utf-8")
-          PY
-
+          echo "Remaining board catalog:"
+          find boards -maxdepth 1 -type f -print | sort
           echo "Remaining variant tree:"
-          find variants -maxdepth 3 -type f -o -type d | sort
+          find variants -maxdepth 3 \( -type f -o -type d \) -print | sort
           git diff --check
 
       - name: Install PlatformIO build tooling
@@ -72,19 +43,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install "setuptools<72" platformio adafruit-nrfutil
 
-      - name: Build MuziWorks Superbase after pruning
+      - name: Build MuziWorks Superbase after board pruning
         shell: bash
         run: |
           set -euo pipefail
           pio run -e muzi-base
 
-      - name: Commit validated Superbase-only hardware tree
+      - name: Commit validated Superbase-only board catalog
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "Amoulier"
           git config user.email "Amoulier@gmail.com"
-          git add platformio.ini variants
+          git add boards
           git diff --cached --check
-          git commit -m "chore: make hardware tree MuziWorks Superbase only"
+          git commit -m "chore: keep only MuziWorks Superbase board definition"
           git push origin HEAD:cleanup/superbase-only-20260830
