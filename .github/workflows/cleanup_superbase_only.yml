@@ -1,0 +1,56 @@
+name: Cleanup repository for MuziWorks Superbase only
+
+on:
+  push:
+    branches:
+      - "cleanup/superbase-only-20260830"
+    paths:
+      - .github/workflows/cleanup_superbase_only.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Remove Heltec-specific releases, tags, and branches from this fork only
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Deleting Heltec releases from $GH_REPO"
+          gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
+            --jq '.[] | select(.tag_name | startswith("heltec-v4-")) | .id' \
+            | while read -r release_id; do
+                [[ -n "$release_id" ]] || continue
+                echo "Deleting release id $release_id"
+                gh api --method DELETE "repos/$GH_REPO/releases/$release_id"
+              done
+
+          echo "Deleting Heltec tags from this repository"
+          git tag -l 'heltec-v4-*' | while read -r tag; do
+            [[ -n "$tag" ]] || continue
+            echo "Deleting tag $tag"
+            git push origin ":refs/tags/$tag"
+          done
+
+          echo "Deleting Heltec work branches from this repository"
+          for branch in \
+            audit/heltec-v4-custom-base-20260829 \
+            feature/heltec-v4-power-optimization \
+            integration/heltec-v4-develop-20260829 \
+            release/heltec-v4-power-v2.8.0.3; do
+            if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+              echo "Deleting branch $branch"
+              git push origin ":refs/heads/$branch"
+            fi
+          done
+
+          echo "Cleanup complete. No other repository is modified by this workflow."
