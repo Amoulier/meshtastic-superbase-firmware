@@ -47,6 +47,16 @@ jobs:
           if actual_nrf != expected_nrf:
               raise SystemExit(f"Unexpected nRF52840 entries: {sorted(actual_nrf)}")
 
+          expected_native = {"portduino.ini", "portduino"}
+          actual_native = names("variants/native")
+          if actual_native != expected_native:
+              raise SystemExit(f"Unexpected native test entries: {sorted(actual_native)}")
+
+          expected_portduino_support = {"HUB75Native.h", "malloc.h", "variant.h"}
+          actual_portduino_support = names("variants/native/portduino")
+          if actual_portduino_support != expected_portduino_support:
+              raise SystemExit(f"Unexpected Portduino support files: {sorted(actual_portduino_support)}")
+
           expected_workflows = {"build_firmware.yml", "superbase_ci.yml"}
           actual_workflows = names(".github/workflows")
           if actual_workflows != expected_workflows:
@@ -68,7 +78,7 @@ jobs:
           native_config = Path("variants/native/portduino.ini").read_text(encoding="utf-8")
           if "[env:superbase-native-tests]" not in native_config:
               raise SystemExit("Superbase native regression environment is missing")
-          forbidden_native_envs = ["[env:native]", "[env:coverage]", "[env:native-tft]", "[env:native-macos]", "[env:native-windows]", "[env:native-wasm]"]
+          forbidden_native_envs = ["[env:native]", "[env:coverage]", "[env:native-tft]", "[env:native-macos]", "[env:native-windows]", "[env:native-wasm]", "[env:buildroot]"]
           present_forbidden = [env for env in forbidden_native_envs if env in native_config]
           if present_forbidden:
               raise SystemExit(f"Generic native targets reintroduced: {present_forbidden}")
