@@ -1,0 +1,26 @@
+name: Audit Superbase native test environment
+
+on:
+  push:
+    branches:
+      - "audit/superbase-native-test-env-20260830"
+    paths:
+      - .github/workflows/audit_superbase_native_env.yml
+
+permissions: read-all
+
+jobs:
+  locate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Locate native coverage environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== env:coverage definitions ==='
+          grep -RIn --include='*.ini' --include='platformio.ini' '^\[env:coverage\]' . || true
+          echo '=== all coverage references in INI files ==='
+          grep -RIn --include='*.ini' --include='platformio.ini' 'coverage' . || true
+          echo '=== all env definitions under variants loaded by legacy wildcards ==='
+          grep -RIn --include='*.ini' '^\[env:' variants | head -250 || true
