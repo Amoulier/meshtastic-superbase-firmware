@@ -11,46 +11,80 @@ permissions:
   contents: write
 
 jobs:
-  cleanup:
+  prune-and-validate:
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - name: Remove Heltec-specific releases, tags, and branches from this fork only
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
+          submodules: recursive
+
+      - name: Prune hardware variants to Superbase plus native test support
         shell: bash
         run: |
           set -euo pipefail
 
-          echo "Deleting Heltec releases from $GH_REPO"
-          gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
-            --jq '.[] | select(.tag_name | startswith("heltec-v4-")) | .id' \
-            | while read -r release_id; do
-                [[ -n "$release_id" ]] || continue
-                echo "Deleting release id $release_id"
-                gh api --method DELETE "repos/$GH_REPO/releases/$release_id"
-              done
-
-          echo "Deleting Heltec tags from this repository"
-          git tag -l 'heltec-v4-*' | while read -r tag; do
-            [[ -n "$tag" ]] || continue
-            echo "Deleting tag $tag"
-            git push origin ":refs/tags/$tag"
+          for path in variants/*; do
+            [[ -d "$path" ]] || continue
+            name="$(basename "$path")"
+            case "$name" in
+              nrf52840|native) ;;
+              *) rm -rf "$path" ;;
+            esac
           done
 
-          echo "Deleting Heltec work branches from this repository"
-          for branch in \
-            audit/heltec-v4-custom-base-20260829 \
-            feature/heltec-v4-power-optimization \
-            integration/heltec-v4-develop-20260829 \
-            release/heltec-v4-power-v2.8.0.3; do
-            if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-              echo "Deleting branch $branch"
-              git push origin ":refs/heads/$branch"
-            fi
+          for path in variants/nrf52840/*; do
+            name="$(basename "$path")"
+            case "$name" in
+              muzi_base|cpp_overrides|nrf52.ini|nrf52840.ini) ;;
+              *) rm -rf "$path" ;;
+            esac
           done
 
-          echo "Cleanup complete. No other repository is modified by this workflow."
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("platformio.ini")
+          text = p.read_text(encoding="utf-8")
+          text = text.replace("default_envs = heltec-v3", "default_envs = muzi-base", 1)
+          start = text.index("extra_configs =\n")
+          marker = "\ndescription = Meshtastic"
+          end = text.index(marker, start)
+          replacement = (
+              "extra_configs =\n"
+              "\tvariants/native/portduino.ini\n"
+              "\tvariants/nrf52840/nrf52.ini\n"
+              "\tvariants/nrf52840/nrf52840.ini\n"
+              "\tvariants/nrf52840/muzi_base/platformio.ini\n"
+          )
+          text = text[:start] + replacement + text[end:]
+          text = text.replace("description = Meshtastic", "description = MuziWorks Superbase Meshtastic firmware", 1)
+          p.write_text(text, encoding="utf-8")
+          PY
+
+          echo "Remaining variant tree:"
+          find variants -maxdepth 3 -type f -o -type d | sort
+          git diff --check
+
+      - name: Install PlatformIO build tooling
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install "setuptools<72" platformio adafruit-nrfutil
+
+      - name: Build MuziWorks Superbase after pruning
+        shell: bash
+        run: |
+          set -euo pipefail
+          pio run -e muzi-base
+
+      - name: Commit validated Superbase-only hardware tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Amoulier"
+          git config user.email "Amoulier@gmail.com"
+          git add platformio.ini variants
+          git diff --cached --check
+          git commit -m "chore: make hardware tree MuziWorks Superbase only"
+          git push origin HEAD:cleanup/superbase-only-20260830
