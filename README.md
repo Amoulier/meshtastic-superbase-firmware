@@ -1,39 +1,64 @@
-<div align="center" markdown="1">
+# MuziWorks Superbase Meshtastic Firmware
 
-<img src=".github/meshtastic_logo.png" alt="Meshtastic Logo" width="80"/>
-<h1>Meshtastic Firmware</h1>
+Custom Meshtastic firmware maintained exclusively for the **MuziWorks Superbase** (`muzi-base`, nRF52840).
 
-![GitHub release downloads](https://img.shields.io/github/downloads/meshtastic/firmware/total)
-[![CI](https://img.shields.io/github/actions/workflow/status/meshtastic/firmware/main_matrix.yml?branch=master&label=actions&logo=github&color=yellow)](https://github.com/meshtastic/firmware/actions/workflows/ci.yml)
-[![CLA assistant](https://cla-assistant.io/readme/badge/meshtastic/firmware)](https://cla-assistant.io/meshtastic/firmware)
-[![Fiscal Contributors](https://opencollective.com/meshtastic/tiers/badge.svg?label=Fiscal%20Contributors&color=deeppink)](https://opencollective.com/meshtastic/)
-[![Vercel](https://img.shields.io/static/v1?label=Powered%20by&message=Vercel&style=flat&logo=vercel&color=000000)](https://vercel.com?utm_source=meshtastic&utm_campaign=oss)
+This fork is intentionally scoped to the Superbase. Hardware definitions, board catalogs, build matrices, and release automation for other physical Meshtastic nodes are not maintained here. Shared Meshtastic core code and native/Portduino test infrastructure are retained where they are required to build and validate the Superbase firmware.
 
-<a href="https://trendshift.io/repositories/5524" target="_blank"><img src="https://trendshift.io/api/badge/repositories/5524" alt="meshtastic%2Ffirmware | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+## Current release
 
-</div>
+The current installable release is **v2.8.0-superbase.5**. Use the repository's **Releases** page for the validated OTA, UF2, manifest, and bundle files.
 
-</div>
+## Superbase-specific behavior
 
-<div align="center">
-	<a href="https://meshtastic.org">Website</a>
-	-
-	<a href="https://meshtastic.org/docs/">Documentation</a>
-</div>
+This fork preserves the Superbase work validated on physical hardware, including:
 
-## Overview
+- MQTT implicit-ACK handling so a channel message already proven relayed does not later regress to a delivery failure because of timeout/retransmit handling.
+- Correct **DMs Only** buzzer behavior and RTTTL ownership/locking protections.
+- A 12-hour stationary position interval for `MUZI_BASE`, reducing unnecessary stationary transmissions.
+- Superbase-only ICM20948/AK09916 power management: the magnetometer enters power-down with the sleeping IMU and returns to continuous 100 Hz operation on wake.
+- GPS/display power handling and the MuziWorks OTA update path used by the Superbase.
+- RX Boosted Gain and LoRa TX power behavior remain unchanged by these customizations.
 
-This repository contains the official device firmware for Meshtastic, an open-source LoRa mesh networking project designed for long-range, low-power communication without relying on internet or cellular infrastructure. The firmware supports various hardware platforms, including ESP32, nRF52, RP2040/RP2350, and Linux-based devices.
+## Repository scope
 
-Meshtastic enables text messaging, location sharing, and telemetry over a decentralized mesh network, making it ideal for outdoor adventures, emergency preparedness, and remote operations.
+The only physical PlatformIO target maintained by this fork is:
 
-### Get Started
+```text
+muzi-base
+```
 
-- 🔧 **[Building Instructions](https://meshtastic.org/docs/development/firmware/build)** - Learn how to compile the firmware from source.
-- ⚡ **[Flashing Instructions](https://meshtastic.org/docs/getting-started/flashing-firmware/)** - Install or update the firmware on your device.
+Relevant hardware definitions are intentionally limited to:
 
-Join our community and help improve Meshtastic! 🚀
+```text
+boards/muzi-base.json
+variants/nrf52840/muzi_base/
+variants/nrf52840/nrf52.ini
+variants/nrf52840/nrf52840.ini
+variants/nrf52840/cpp_overrides/
+```
 
-## Stats
+`variants/native/` remains solely for automated native tests and is not a supported physical node target.
 
-![Alt](https://repobeats.axiom.co/api/embed/8025e56c482ec63541593cc5bd322c19d5c0bdcf.svg "Repobeats analytics image")
+## Build
+
+Clone with submodules and build the Superbase target with PlatformIO:
+
+```bash
+pio run -e muzi-base
+```
+
+## Validation
+
+The repository CI is intentionally Superbase-only. It checks repository scope, runs the critical native suites used by this fork, and builds a fresh `nrf52840 / muzi-base` firmware artifact.
+
+## Installation
+
+For an existing Superbase with the MuziWorks OTAFIX bootloader, use the `firmware-muzi-base-*-ota.zip` file from the latest release **without extracting it**.
+
+For USB recovery/update through the UF2 bootloader, copy the `firmware-muzi-base-*.uf2` file from the release to the mounted bootloader drive.
+
+Back up the node configuration before flashing.
+
+## Upstream
+
+This repository is derived from Meshtastic firmware. Upstream changes are reviewed and selectively integrated so that Superbase-specific behavior and power optimizations are not overwritten by unrelated hardware changes.
