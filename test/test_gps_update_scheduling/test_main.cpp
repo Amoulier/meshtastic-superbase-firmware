@@ -167,6 +167,68 @@ static void test_reset_clears_the_search_state(void)
     TEST_ASSERT_EQUAL_UINT32(0, s.elapsedSearchMs());
 }
 
+static void test_fix_outside_search_is_ignored()
+{
+    GPSUpdateScheduling s;
+    TEST_ASSERT_FALSE(s.hasValidFixSinceSearchStarted());
+    s.informValidFix();
+    TEST_ASSERT_FALSE(s.hasValidFixSinceSearchStarted());
+}
+
+static void test_fix_latches_for_entire_search()
+{
+    GPSUpdateScheduling s;
+    s.informSearching();
+    TEST_ASSERT_FALSE(s.hasValidFixSinceSearchStarted());
+    s.informValidFix();
+    Time::advanceTestMillis(120000);
+    TEST_ASSERT_TRUE(s.hasValidFixSinceSearchStarted());
+}
+
+static void test_new_search_clears_previous_fix()
+{
+    GPSUpdateScheduling s;
+    s.informSearching();
+    s.informValidFix();
+    s.informGotLock();
+    TEST_ASSERT_FALSE(s.hasValidFixSinceSearchStarted());
+    s.informSearching();
+    TEST_ASSERT_FALSE(s.hasValidFixSinceSearchStarted());
+}
+
+static void test_failed_search_clears_fix_visibility()
+{
+    GPSUpdateScheduling s;
+    s.informSearching();
+    s.informValidFix();
+    s.informSearchFailed();
+    TEST_ASSERT_FALSE(s.hasValidFixSinceSearchStarted());
+    s.informSearching();
+    TEST_ASSERT_FALSE(s.hasValidFixSinceSearchStarted());
+}
+
+static void test_reset_clears_valid_fix()
+{
+    GPSUpdateScheduling s;
+    s.informSearching();
+    s.informValidFix();
+    s.reset();
+    TEST_ASSERT_FALSE(s.hasValidFixSinceSearchStarted());
+    s.informSearching();
+    TEST_ASSERT_FALSE(s.hasValidFixSinceSearchStarted());
+}
+
+static void test_valid_fix_survives_clock_rollover()
+{
+    GPSUpdateScheduling s;
+    Time::setTestMillis(UINT32_MAX - 1000);
+    s.informSearching();
+    s.informValidFix();
+    Time::advanceTestMillis(5000);
+    TEST_ASSERT_TRUE(s.hasValidFixSinceSearchStarted());
+    TEST_ASSERT_EQUAL_UINT32(5000, s.elapsedSearchMs());
+}
+
 void setup()
 {
     delay(10);
@@ -185,6 +247,12 @@ void setup()
     RUN_TEST(test_search_ending_after_the_wrap_reads_as_idle);
     RUN_TEST(test_search_starting_after_the_wrap_reads_as_searching);
     RUN_TEST(test_reset_clears_the_search_state);
+    RUN_TEST(test_fix_outside_search_is_ignored);
+    RUN_TEST(test_fix_latches_for_entire_search);
+    RUN_TEST(test_new_search_clears_previous_fix);
+    RUN_TEST(test_failed_search_clears_fix_visibility);
+    RUN_TEST(test_reset_clears_valid_fix);
+    RUN_TEST(test_valid_fix_survives_clock_rollover);
     exit(UNITY_END());
 }
 

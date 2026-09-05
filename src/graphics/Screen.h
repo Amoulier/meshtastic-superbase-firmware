@@ -5,6 +5,7 @@
 #include "detect/ScanI2C.h"
 #include "mesh/generated/meshtastic/config.pb.h"
 #include <OLEDDisplay.h>
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
@@ -211,6 +212,9 @@ class Screen;
  */
 class Screen : public concurrency::OSThread
 {
+#ifdef PIO_UNIT_TESTING
+    friend struct ScreenNavigationTest;
+#endif
     CallbackObserver<Screen, const meshtastic::Status *> powerStatusObserver =
         CallbackObserver<Screen, const meshtastic::Status *>(this, &Screen::handleStatusUpdate);
     CallbackObserver<Screen, const meshtastic::Status *> gpsStatusObserver =
@@ -276,6 +280,9 @@ class Screen : public concurrency::OSThread
     OLEDDISPLAY_GEOMETRY geometry;
 
     bool isOverlayBannerShowing();
+
+    // Thread-safe snapshot of whether the text-message frame is currently shown.
+    bool isTextMessageFrameShown() const;
 
     // True if the always-present games frame is the one currently on screen. Lets the games module
     // ignore D-pad input when the player has navigated to a different frame.
@@ -801,6 +808,7 @@ class Screen : public concurrency::OSThread
     // Whether we are showing the regular screen (as opposed to booth screen or
     // Bluetooth PIN screen)
     bool showingNormalScreen = false;
+    std::atomic<bool> textMessageFrameShown{false};
     /// Track USB power state to only wake screen on actual power state changes
     bool lastPowerUSBState = false;
 

@@ -1,0 +1,152 @@
+name: Superbase CI
+
+on:
+  push:
+    branches:
+      - develop
+  pull_request:
+    branches:
+      - develop
+  workflow_dispatch:
+
+permissions: read-all
+
+concurrency:
+  group: superbase-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scope-audit:
+    name: Superbase-only scope audit
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Verify repository hardware scope and custom invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def names(path):
+              return {p.name for p in Path(path).iterdir()}
+
+          expected_boards = {"muzi-base.json"}
+          actual_boards = names("boards")
+          if actual_boards != expected_boards:
+              raise SystemExit(f"Unexpected board catalog: {sorted(actual_boards)}")
+
+          expected_variant_roots = {"native", "nrf52840"}
+          actual_variant_roots = names("variants")
+          if actual_variant_roots != expected_variant_roots:
+              raise SystemExit(f"Unexpected variant roots: {sorted(actual_variant_roots)}")
+
+          expected_nrf = {"cpp_overrides", "muzi_base", "nrf52.ini", "nrf52840.ini"}
+          actual_nrf = names("variants/nrf52840")
+          if actual_nrf != expected_nrf:
+              raise SystemExit(f"Unexpected nRF52840 entries: {sorted(actual_nrf)}")
+
+          expected_native = {"portduino.ini", "portduino"}
+          actual_native = names("variants/native")
+          if actual_native != expected_native:
+              raise SystemExit(f"Unexpected native test entries: {sorted(actual_native)}")
+
+          expected_portduino_support = {"HUB75Native.h", "malloc.h", "variant.h"}
+          actual_portduino_support = names("variants/native/portduino")
+          if actual_portduino_support != expected_portduino_support:
+              raise SystemExit(f"Unexpected Portduino support files: {sorted(actual_portduino_support)}")
+
+          expected_workflows = {"build_firmware.yml", "superbase_ci.yml"}
+          actual_workflows = names(".github/workflows")
+          if actual_workflows != expected_workflows:
+              raise SystemExit(f"Unexpected workflows: {sorted(actual_workflows)}")
+
+          platformio = Path("platformio.ini").read_text(encoding="utf-8")
+          required_platformio = [
+              "default_envs = muzi-base",
+              "variants/native/portduino.ini",
+              "variants/nrf52840/nrf52.ini",
+              "variants/nrf52840/nrf52840.ini",
+              "variants/nrf52840/muzi_base/platformio.ini",
+              "description = MuziWorks Superbase Meshtastic firmware",
+          ]
+          missing = [value for value in required_platformio if value not in platformio]
+          if missing:
+              raise SystemExit(f"platformio.ini missing required Superbase scope markers: {missing}")
+
+          native_config = Path("variants/native/portduino.ini").read_text(encoding="utf-8")
+          if "[env:superbase-native-tests]" not in native_config:
+              raise SystemExit("Superbase native regression environment is missing")
+          forbidden_native_envs = ["[env:native]", "[env:coverage]", "[env:native-tft]", "[env:native-macos]", "[env:native-windows]", "[env:native-wasm]", "[env:buildroot]"]
+          present_forbidden = [env for env in forbidden_native_envs if env in native_config]
+          if present_forbidden:
+              raise SystemExit(f"Generic native targets reintroduced: {present_forbidden}")
+
+          required_source = {
+              "src/motion/ICM20948Sensor.cpp": ["MUZI_BASE", "AK09916_mode_power_down", "AK09916_mode_cont_100hz"],
+              "src/modules/ExternalNotificationModule.cpp": ["buzzerModeAllowsNotification", "stopBuzzerNow", "buzzerAlertIsDirectMessage"],
+              "src/AudioThread.h": ["RtttlOwner", "rtttlLock", "SPILock.h"],
+              "test/test_packet_signing/test_main.cpp": ["sendAckNak", "meshtastic_MeshPacket"],
+          }
+          for filename, markers in required_source.items():
+              data = Path(filename).read_text(encoding="utf-8")
+              if filename.endswith("test_main.cpp") and len(data) < 20000:
+                  raise SystemExit(f"{filename} unexpectedly small: {len(data)} bytes")
+              absent = [m for m in markers if m not in data]
+              if absent:
+                  raise SystemExit(f"{filename} missing required markers: {absent}")
+
+          print("Superbase-only repository scope verified")
+          PY
+          git diff --check
+          if git grep -n -E '^(<<<<<<<|>>>>>>>)' -- ':!*.md'; then
+            echo "Merge conflict marker found" >&2
+            exit 1
+          fi
+
+      - name: Audit preserved behavior and selective source delta
+        run: python3 bin/audit-superbase-release.py --source --output audit-evidence/source-audit.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: superbase-source-audit
+          path: audit-evidence/
+          if-no-files-found: error
+
+  native-critical:
+    name: Superbase critical native tests (${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - name: Setup native build
+        uses: ./.github/actions/setup-native
+      - name: Verify source identity and run attributed tests
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          sed -i 's/-DBUILD_EPOCH=$UNIX_TIME/#-DBUILD_EPOCH=$UNIX_TIME/' platformio.ini
+          python3 bin/test-superbase.py --shard "$SHARD" --shards 3
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: superbase-native-${{ matrix.shard }}
+          path: audit-evidence/
+          if-no-files-found: error
+
+  build-superbase:
+    name: Build MuziWorks Superbase
+    uses: ./.github/workflows/build_firmware.yml
+    with:
+      version: ci-${{ github.sha }}

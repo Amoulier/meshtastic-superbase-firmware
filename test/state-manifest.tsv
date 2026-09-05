@@ -58,6 +58,7 @@ test_hop_start_policy	writes=config.proto,module.proto,device.proto,channels.pro
 test_mesh_beacon	writes=module.proto	exercises the beacon's module-config save path
 test_mesh_module	writes=config.proto,module.proto,device.proto,channels.proto,nodes.proto,warm.dat	module framework tests construct a NodeDB
 test_mqtt	writes=config.proto,module.proto,device.proto,channels.proto,nodes.proto errors=1000..12000	constructs a NodeDB for node lookups in the MQTT paths
+test_muted_source	writes=config.proto,module.proto,device.proto,channels.proto,nodes.proto	constructs a NodeDB (isToUs needs nodeDB->getNodeNum(), and the DM branch looks the sender up), whose constructor persists a default set when the prefs directory is empty
 test_nexthop_routing	writes=config.proto,module.proto,device.proto,channels.proto,nodes.proto	next-hop selection reads and updates the node DB
 test_nodedb_blocked	state=per-suite writes=config.proto,module.proto,device.proto,channels.proto,nodes.proto,warm.dat	saturates the DB with MAX_NUM_NODES-2 favourited nodes to test the protected cap; a later test's removeNodeByNum() persists that state, and the cap test depends on the fill from the test before it
 test_nodedb_boot_recovery	state=per-suite writes=config.proto,module.proto,device.proto,channels.proto,nodes.proto	deliberate boot-recovery ladder: corrupts/deletes/restores the pref files and reboots a NodeDB per test to pin the DECODE_FAILED identity freeze, so each test observes the previous test's on-disk state
@@ -73,3 +74,4 @@ test_traceroute_nexthop	writes=config.proto,module.proto,device.proto,channels.p
 test_traffic_management	writes=config.proto,module.proto,device.proto,channels.proto,nodes.proto,warm.dat errors=3000..12000	constructs a NodeDB for the per-node rate-limit and dedup state; test_tm_fuzz_nodenum_blitz feeds malformed payloads, and each rejection logs (measured 7985)
 test_transmit_history	writes=transmit_history.dat	persistence round-trip: what it asserts is that retransmission state survives a save/load
 test_warm_store	writes=warm.dat	persistence round-trip of the warm-tier snapshot, which is the tier's whole contract
+test_superbase_navigation	writes=config.proto,module.proto,device.proto,channels.proto,nodes.proto	constructs a NodeDB for production BaseUI menu and physical-input regression tests
