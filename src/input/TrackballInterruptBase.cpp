@@ -61,25 +61,29 @@ void TrackballInterruptBase::init(uint8_t pinDown, uint8_t pinUp, uint8_t pinLef
     this->_eventPressed = eventPressed;
     this->_eventPressedLong = eventPressedLong;
 
+    const auto attach = [](uint8_t pin, void (*handler)()) {
+        pinMode(pin, INPUT_PULLUP);
+#if defined(MUZI_BASE)
+        if (attachInterrupt(pin, handler, TB_DIRECTION) == 0)
+            LOG_WARN("Superbase navigation GPIO %u has no IRQ; polling remains active", pin);
+#else
+        attachInterrupt(pin, handler, TB_DIRECTION);
+#endif
+    };
     if (pinPress != 255) {
-        pinMode(pinPress, INPUT_PULLUP);
-        attachInterrupt(pinPress, onIntPress, TB_DIRECTION);
+        attach(pinPress, onIntPress);
     }
     if (this->_pinDown != 255) {
-        pinMode(this->_pinDown, INPUT_PULLUP);
-        attachInterrupt(this->_pinDown, onIntDown, TB_DIRECTION);
+        attach(this->_pinDown, onIntDown);
     }
     if (this->_pinUp != 255) {
-        pinMode(this->_pinUp, INPUT_PULLUP);
-        attachInterrupt(this->_pinUp, onIntUp, TB_DIRECTION);
+        attach(this->_pinUp, onIntUp);
     }
     if (this->_pinLeft != 255) {
-        pinMode(this->_pinLeft, INPUT_PULLUP);
-        attachInterrupt(this->_pinLeft, onIntLeft, TB_DIRECTION);
+        attach(this->_pinLeft, onIntLeft);
     }
     if (this->_pinRight != 255) {
-        pinMode(this->_pinRight, INPUT_PULLUP);
-        attachInterrupt(this->_pinRight, onIntRight, TB_DIRECTION);
+        attach(this->_pinRight, onIntRight);
     }
 
     LOG_DEBUG("Trackball GPIO initialized - UP:%d DOWN:%d LEFT:%d RIGHT:%d PRESS:%d", this->_pinUp, this->_pinDown,
@@ -87,11 +91,19 @@ void TrackballInterruptBase::init(uint8_t pinDown, uint8_t pinUp, uint8_t pinLef
 #ifndef HAS_PHYSICAL_KEYBOARD
     osk_found = true;
 #endif
+#if SUPERBASE_MECHANICAL_BUTTONS
+    LOG_INFO("Superbase navigation: IRQ latch plus polling fallback enabled");
+    this->setInterval(50);
+#else
     this->setInterval(100);
+#endif
 }
 
 int32_t TrackballInterruptBase::runOnce()
 {
+#if SUPERBASE_MECHANICAL_BUTTONS
+    return pollMechanicalButtons();
+#else
     InputEvent e = {};
     e.inputEvent = INPUT_BROKER_NONE;
 #if TB_THRESHOLD
@@ -243,10 +255,14 @@ int32_t TrackballInterruptBase::runOnce()
     }
 
     return 50; // Check more frequently for better long press detection
+#endif
 }
 
 void TrackballInterruptBase::intPressHandler()
 {
+#if SUPERBASE_MECHANICAL_BUTTONS
+    recordButtonIrq(0);
+#else
     // pressIrqSeq == 0 means nothing recorded yet, so a press at clock 0 is not read as a cooldown.
     if (pressIrqSeq != 0 && Throttle::isWithinTimespanMs(lastPressInterruptTime, 10))
         return;
@@ -254,10 +270,14 @@ void TrackballInterruptBase::intPressHandler()
     pressIrqTime = lastPressInterruptTime;
     pressIrqSeq++;
     this->action = TB_ACTION_PRESSED;
+#endif
 }
 
 void TrackballInterruptBase::intDownHandler()
 {
+#if SUPERBASE_MECHANICAL_BUTTONS
+    recordButtonIrq(2);
+#else
     if (TB_THRESHOLD || !Throttle::isWithinTimespanMs(lastInterruptTime, 10))
         this->action = TB_ACTION_DOWN;
     lastInterruptTime = millis();
@@ -265,10 +285,14 @@ void TrackballInterruptBase::intDownHandler()
 #if TB_THRESHOLD
     down_counter++;
 #endif
+#endif
 }
 
 void TrackballInterruptBase::intUpHandler()
 {
+#if SUPERBASE_MECHANICAL_BUTTONS
+    recordButtonIrq(1);
+#else
     if (TB_THRESHOLD || !Throttle::isWithinTimespanMs(lastInterruptTime, 10))
         this->action = TB_ACTION_UP;
     lastInterruptTime = millis();
@@ -276,24 +300,79 @@ void TrackballInterruptBase::intUpHandler()
 #if TB_THRESHOLD
     up_counter++;
 #endif
+#endif
 }
 
 void TrackballInterruptBase::intLeftHandler()
 {
+#if SUPERBASE_MECHANICAL_BUTTONS
+    recordButtonIrq(3);
+#else
     if (TB_THRESHOLD || !Throttle::isWithinTimespanMs(lastInterruptTime, 10))
         this->action = TB_ACTION_LEFT;
     lastInterruptTime = millis();
 #if TB_THRESHOLD
     left_counter++;
 #endif
+#endif
 }
 
 void TrackballInterruptBase::intRightHandler()
 {
+#if SUPERBASE_MECHANICAL_BUTTONS
+    recordButtonIrq(4);
+#else
     if (TB_THRESHOLD || !Throttle::isWithinTimespanMs(lastInterruptTime, 10))
         this->action = TB_ACTION_RIGHT;
     lastInterruptTime = millis();
 #if TB_THRESHOLD
     right_counter++;
 #endif
+#endif
 }
+
+#if SUPERBASE_MECHANICAL_BUTTONS
+void TrackballInterruptBase::recordButtonIrq(unsigned index)
+{
+    auto &button = buttons[index];
+    const uint32_t now = Time::getMillis();
+    const uint32_t sequence = button.sequence.load(std::memory_order_relaxed);
+    if (sequence && uint32_t(now - button.time.load(std::memory_order_relaxed)) < SuperbaseButtonState::debounceMs)
+        return;
+    button.time.store(now, std::memory_order_relaxed);
+    button.sequence.store(sequence + 1, std::memory_order_release);
+}
+
+int32_t TrackballInterruptBase::pollMechanicalButtons()
+{
+    const uint8_t pins[] = {_pinPress, _pinUp, _pinDown, _pinLeft, _pinRight};
+    const input_broker_event events[] = {_eventPressed, _eventUp, _eventDown, _eventLeft, _eventRight};
+    bool fast = false;
+    for (unsigned i = 0; i < 5; ++i) {
+        if (pins[i] == 255)
+            continue;
+        auto &button = buttons[i];
+        const uint32_t sequence = button.sequence.load(std::memory_order_acquire);
+        const uint32_t edgeAt = button.time.load(std::memory_order_relaxed);
+        const bool down = !digitalRead(pins[i]);
+        // An IRQ during this snapshot stays pending, rather than being cleared unread.
+        if (sequence != button.sequence.load(std::memory_order_acquire)) {
+            fast = true;
+            continue;
+        }
+        const bool edge = sequence != button.seen;
+        button.seen = sequence;
+        const auto result = button.state.poll(down, edge, edgeAt, Time::getMillis(), i == 0);
+        fast |= button.state.needsFastPoll();
+        if (result != SuperbaseButtonState::Event::None) {
+            InputEvent event = {};
+            event.source = _originName;
+            event.inputEvent = result == SuperbaseButtonState::Event::LongPress ? _eventPressedLong : events[i];
+            LOG_DEBUG("Superbase navigation GPIO %u -> event %u", pins[i], event.inputEvent);
+            notifyObservers(&event);
+        }
+    }
+    // Preserve the previous idle cadence; only poll faster while handling a physical press.
+    return fast ? 10 : 50;
+}
+#endif

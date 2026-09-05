@@ -3,6 +3,14 @@
 #include "InputBroker.h"
 #include "mesh/NodeDB.h"
 
+// The maintained board has mechanical switches, not a pulse-output trackball. Native
+// regression tests exercise this same path; other hardware retains its existing driver.
+#if defined(MUZI_BASE) || (defined(PIO_UNIT_TESTING) && ARCH_PORTDUINO)
+#define SUPERBASE_MECHANICAL_BUTTONS 1
+#include "SuperbaseButtonState.h"
+#include <atomic>
+#endif
+
 #ifndef TB_DIRECTION
 #if ARCH_PORTDUINO
 #include "PortduinoGlue.h"
@@ -67,6 +75,17 @@ class TrackballInterruptBase : public Observable<const InputEvent *>, public con
     static const uint32_t LONG_PRESS_REPEAT_INTERVAL = 300; // ms - interval between repeated long press events
 
   private:
+#if SUPERBASE_MECHANICAL_BUTTONS
+    struct ButtonIrq {
+        std::atomic<uint32_t> sequence{0};
+        std::atomic<uint32_t> time{0};
+        uint32_t seen = 0; // Written only by the cooperative loop.
+        SuperbaseButtonState state;
+    };
+    ButtonIrq buttons[5]; // SELECT, UP, DOWN, LEFT, RIGHT.
+    void recordButtonIrq(unsigned index);
+    int32_t pollMechanicalButtons();
+#endif
     input_broker_event _eventDown = INPUT_BROKER_NONE;
     input_broker_event _eventUp = INPUT_BROKER_NONE;
     input_broker_event _eventLeft = INPUT_BROKER_NONE;

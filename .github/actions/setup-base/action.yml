@@ -4,11 +4,7 @@ description: Base build actions for Meshtastic Platform IO steps
 runs:
   using: composite
   steps:
-    - name: Checkout code
-      uses: actions/checkout@v7
-      with:
-        submodules: recursive
-
+    # The caller owns checkout/ref selection. A nested checkout would silently replace its pinned SHA.
     - name: Install dependencies
       shell: bash
       run: |
