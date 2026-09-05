@@ -3,6 +3,7 @@
 #include "PowerMon.h"
 #include "UptimeClock.h"
 #include "main.h"
+#include "mesh/MeshRadio.h"
 #include "mesh/NodeDB.h"
 #include "mesh/RadioLibInterface.h"
 #include <unity.h>
@@ -36,6 +37,7 @@ class RecoveryRadio : public RadioLibInterface
 
 static RecoveryRadio *radio;
 static RadioLibInterface *savedInstance;
+static const RegionInfo *savedRegion;
 static PowerMon testPowerMon;
 static PowerMon *savedPowerMon;
 static uint32_t savedReboot, savedErrorAddress;
@@ -44,10 +46,14 @@ static meshtastic_CriticalErrorCode savedError;
 void setUp()
 {
     savedInstance = RadioLibInterface::instance;
+    savedRegion = myRegion;
+    // RadioInterface computes slot timing in its constructor and requires an initialized region.
+    myRegion = getRegion(meshtastic_Config_LoRaConfig_RegionCode_US);
     savedPowerMon = powerMon;
     savedReboot = rebootAtMsec;
     savedError = error_code;
     savedErrorAddress = error_address;
+    testPowerMon = PowerMon();
     powerMon = &testPowerMon;
     rebootAtMsec = 0;
     Time::setTestMillis(0);
@@ -59,6 +65,7 @@ void tearDown()
     delete radio;
     radio = nullptr;
     RadioLibInterface::instance = savedInstance;
+    myRegion = savedRegion;
     powerMon = savedPowerMon;
     rebootAtMsec = savedReboot;
     error_code = savedError;
