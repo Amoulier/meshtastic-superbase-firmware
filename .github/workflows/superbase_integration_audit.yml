@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CANDIDATE_SHA: ffd5e53c4dc580d9d7e110fd0c0f4faa1f260395
+  CANDIDATE_SHA: 7c39922e028a68dbe3af7470aea8eb8d849fc569
 
 jobs:
   source:
@@ -62,7 +62,7 @@ jobs:
           name: superbase-final-native-${{ matrix.shard }}
           path: |
             audit-evidence/
-            .pio/test-state/summary.tsv
+            .pio/test-state/
           if-no-files-found: error
           include-hidden-files: true
 
