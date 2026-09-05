@@ -1,48 +1,39 @@
-> **Withdrawn: v2.8.0-superbase.7.** Built-in navigation was reported nonfunctional after installation. Its release and binary assets have been removed. The navigation correction is a candidate pending physical-device confirmation; do not reinstall the withdrawn files.
-
 # MuziWorks Superbase Meshtastic Firmware
+
+> **Withdrawn: v2.8.0-superbase.7.** Built-in navigation was reported nonfunctional after installation. Its release and binary assets have been removed. Do not reinstall the withdrawn files. The Git tag is retained only for audit history.
 
 Custom Meshtastic firmware maintained exclusively for the **MuziWorks Superbase** (`muzi-base`, nRF52840).
 
-This fork is intentionally scoped to the Superbase. Hardware definitions, board catalogs, build matrices, and release automation for other physical Meshtastic nodes are not maintained here. Shared Meshtastic core code and native/Portduino test infrastructure are retained where they are required to build and validate the Superbase firmware.
+This fork is intentionally scoped to the Superbase. Hardware definitions, board catalogs, build matrices, and release automation for other physical Meshtastic nodes are not maintained here. Shared Meshtastic core code and native/Portduino test infrastructure are retained where required to build and validate the Superbase firmware.
 
-## Current release
+## Release status
 
-The current installable release is **v2.8.0-superbase.7**. Use the repository's **Releases** page for the validated OTA, UF2, manifest, and bundle files.
+**v2.8.0-superbase.6** is the latest remaining published release. The navigation correction on `fix/superbase-navigation-20260905` is a **candidate pending physical-device confirmation**, not a replacement final release. No automated build should be described as verified on the user's hardware.
 
-## Selective reliability update
+See `docs/SUPERBASE_NAVIGATION_AUDIT.md` for the navigation findings, changed code paths and verification limits. The candidate retains short button taps, polls switches when an IRQ is not delivered, and adds regression tests through the actual input broker and BaseUI handler. Board GPIO assignments are unchanged.
 
-`v2.8.0-superbase.7` integrates reviewed upstream fixes for Bluetooth administration,
-SX1262/LR1121 radio recovery, GPS fix tracking, muted-message screen behavior,
-security-key restoration and module metadata. It also fixes recovery edge cases
-found during the integration audit. Other physical board targets, radio backends,
-protocol schemas and the validated nRF52 toolchain are not imported or changed.
+## Selective reliability changes retained in source
 
-See `docs/SUPERBASE_RELEASE_7.md` for commit provenance, audit scope and limitations.
-Release assets are published only after the required native suites, exact-source
-Superbase build, source-preservation checks and OTA/UF2 package audit pass.
-Automated validation is not a physical-device endurance or battery-life test.
+The source retains the reviewed Bluetooth administration, SX1262/LR1121 radio recovery, GPS fix tracking, muted-message screen behavior, security-key restoration and module-metadata changes previously integrated into the withdrawn .7 build. Withdrawal supersedes that build's earlier release recommendation and automated audit results.
+
+`docs/SUPERBASE_RELEASE_7.md` is retained as historical provenance, not as approval to install the withdrawn release. Other physical board targets, unrelated radio backends, protocol schemas and the nRF52 toolchain are not imported or changed by the navigation correction.
 
 ## Superbase-specific behavior
 
-This fork preserves the Superbase work validated on physical hardware, including:
+This fork preserves the existing Superbase customizations:
 
 - MQTT implicit-ACK handling so a channel message already proven relayed does not later regress to a delivery failure because of timeout/retransmit handling.
-- Correct **DMs Only** buzzer behavior and RTTTL ownership/locking protections.
-- A 12-hour stationary position interval for `MUZI_BASE`, reducing unnecessary stationary transmissions.
-- Superbase-only ICM20948/AK09916 power management: the magnetometer enters power-down with the sleeping IMU and returns to continuous 100 Hz operation on wake.
-- GPS/display power handling and the MuziWorks OTA update path used by the Superbase.
-- RX Boosted Gain and LoRa TX power behavior remain unchanged by these customizations.
+- **DMs Only** buzzer behavior and RTTTL ownership/locking protections.
+- A 12-hour stationary position interval for `MUZI_BASE`.
+- Superbase-only ICM20948/AK09916 power management: magnetometer power-down with the sleeping IMU and restoration on wake.
+- Existing GPS/display power handling and the MuziWorks OTA update path.
+- Unchanged RX Boosted Gain and LoRa TX power policy.
 
 ## Repository scope
 
-The only physical PlatformIO target maintained by this fork is:
+The only maintained physical PlatformIO target is `muzi-base`.
 
-```text
-muzi-base
-```
-
-Relevant hardware definitions are intentionally limited to:
+Relevant hardware definitions are limited to:
 
 ```text
 boards/muzi-base.json
@@ -52,27 +43,19 @@ variants/nrf52840/nrf52840.ini
 variants/nrf52840/cpp_overrides/
 ```
 
-`variants/native/` remains solely for automated native tests and is not a supported physical node target.
+`variants/native/` remains solely for regression tests, not as a supported physical node target.
 
-## Build
+## Build and validation
 
-Clone with submodules and build the Superbase target with PlatformIO:
+Clone with submodules and build with `pio run -e muzi-base`.
 
-```bash
-pio run -e muzi-base
-```
-
-## Validation
-
-The repository CI is intentionally Superbase-only. It checks repository scope, runs the critical native suites used by this fork, and builds a fresh `nrf52840 / muzi-base` firmware artifact.
+The Superbase CI checks repository scope, runs native suites and builds a fresh `muzi-base` image. Navigation tests use simulated GPIO and an in-memory display with production input/UI code; they do not verify electrical signals, physical nRF52 interrupt delivery or the real OLED. Candidate builds need physical confirmation before being promoted to a final release.
 
 ## Installation
 
-For an existing Superbase with the MuziWorks OTAFIX bootloader, use the `firmware-muzi-base-*-ota.zip` file from the latest release **without extracting it**.
+Back up configuration before any firmware change. A navigation correction does **not** require a factory reset, changed board pins or regenerated identity keys.
 
-For USB recovery/update through the UF2 bootloader, copy the `firmware-muzi-base-*.uf2` file from the release to the mounted bootloader drive.
-
-Back up the node configuration before flashing.
+For a Superbase with the MuziWorks OTAFIX bootloader, use the intended firmware's `*-ota.zip` **without extracting it**. For USB/UF2, copy the intended `.uf2` to the bootloader drive. A bundle or audit ZIP is not itself an OTA package. Do not use .7 files retained from the withdrawn release.
 
 ## Upstream
 
