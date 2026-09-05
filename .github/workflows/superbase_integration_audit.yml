@@ -1,0 +1,234 @@
+name: Superbase selective integration audit
+
+on:
+  push:
+    branches: [audit/superbase-selective-20260905]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: superbase-selective-integration
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'Amoulier/meshtastic-superbase-firmware'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.prepare.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+      - name: Integrate only reviewed upstream changes
+        id: prepare
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Amoulier'
+          git config user.email '19624653+Amoulier@users.noreply.github.com'
+          git fetch origin 4cbba7006a9fed23cb1a778b7e62422ba96ee8bc
+          git fetch https://github.com/meshtastic/firmware.git fdb67309aa8fb9a019e07160ac72024c3d25ce2d --depth=128
+          git checkout --detach 4cbba7006a9fed23cb1a778b7e62422ba96ee8bc
+          python3 - <<'PY'
+          import pathlib, subprocess
+          def git(*args, **kwargs):
+              return subprocess.run(['git', *args], check=True, **kwargs)
+          radio_paths = ['src/mesh/LR11x0Interface.cpp', 'src/mesh/LR11x0Interface.h',
+                         'src/mesh/SX126xInterface.cpp', 'src/mesh/SX126xInterface.h',
+                         'src/mesh/RadioLibInterface.cpp', 'src/mesh/RadioLibInterface.h',
+                         'src/mesh/Throttle.h', 'src/main.cpp']
+          selected = [
+              ('47db0e3020a608e06fb65cce70cd2f093021bd82', 11651, None),
+              ('7dffd66c59b8ab45933f68192898ae01c012c990', 11676, radio_paths),
+              ('df34ef1081ff5ff2f7ed23cb8319b6219353196c', 11678, radio_paths),
+              ('3683566f62575f96ba47e2ee5b51b4fbc27e2d10', 11671, None),
+              ('14eaa5587d571b76326f0e63c33c6d72d1f6fa38', 11688, 'mute'),
+              ('4cb912ff55ba225a0037352320e026d09de005b2', 11697, None),
+              ('83198c1cbb982e6cdbf641ecc9c67063889435a6', 11686, None),
+              ('104923730f907925ba30e45a159b9751ee0ba0c8', 11709, None),
+          ]
+          for sha, pr, paths in selected:
+              print(f'Integrating upstream #{pr}: {sha}', flush=True)
+              if paths == 'mute':
+                  paths = git('diff', '--name-only', sha+'^', sha, capture_output=True, text=True).stdout.splitlines()
+                  paths.remove('src/modules/ExternalNotificationModule.cpp')
+              patch = git('diff', '--binary', sha+'^', sha, '--', *(paths or []), capture_output=True).stdout
+              if not patch:
+                  raise SystemExit(f'Empty upstream patch #{pr}')
+              git('apply', '--3way', '--index', input=patch)
+              if pr == 11688:
+                  path = pathlib.Path('src/modules/ExternalNotificationModule.cpp')
+                  data = path.read_text()
+                  start = data.index('            const meshtastic_NodeInfoLite *sender = nodeDB->getMeshNode(mp.from);', data.index('ProcessMessage ExternalNotificationModule::handleReceived'))
+                  end_marker = '                                     : (ch.settings.has_module_settings && ch.settings.module_settings.is_muted);'
+                  end = data.index(end_marker, start) + len(end_marker)
+                  old = data[start:end]
+                  assert old.count('const bool isDmToUs') == 1 and old.count('bool is_muted') == 1
+                  data = data[:start] + '            const bool isDmToUs = !isBroadcast(mp.to) && isToUs(&mp);\n            const bool is_muted = isMutedForPacket(mp);' + data[end:]
+                  if '#include "Channels.h"' not in data:
+                      data = data.replace('#include "ExternalNotificationModule.h"', '#include "ExternalNotificationModule.h"\n#include "Channels.h"', 1)
+                  path.write_text(data)
+                  git('add', str(path))
+              git('diff', '--cached', '--check')
+              git('commit', '-m', f'fix(superbase): integrate upstream #{pr}', '-m', f'Upstream-commit: {sha}\nSource: https://github.com/meshtastic/firmware/pull/{pr}\nSelective Superbase integration; unrelated radio backends and physical board targets are not imported.')
+          # Preserve the validated toolchain, protocol schema, identity, RF settings and board definitions.
+          base = '4cbba7006a9fed23cb1a778b7e62422ba96ee8bc'
+          preserved = ['boards', 'variants', 'protobufs', 'src/mesh/generated',
+                       'src/motion/ICM20948Sensor.cpp', 'src/modules/PositionModule.cpp',
+                       'src/mesh/ReliableRouter.cpp', 'src/mesh/Router.cpp', 'src/modules/MQTT.cpp',
+                       'src/AudioThread.h', 'src/AudioThread.cpp', 'src/PowerFSM.cpp',
+                       'src/platform/nrf52', 'extra_scripts', 'version.properties']
+          git('diff', '--exit-code', base, 'HEAD', '--', *preserved)
+          assert {p.name for p in pathlib.Path('boards').iterdir()} == {'muzi-base.json'}
+          assert {p.name for p in pathlib.Path('variants').iterdir()} == {'native', 'nrf52840'}
+          assert {p.name for p in pathlib.Path('.github/workflows').iterdir()} == {'build_firmware.yml', 'superbase_ci.yml'}
+          ext = pathlib.Path('src/modules/ExternalNotificationModule.cpp').read_text()
+          for marker in ['buzzerModeAllowsNotification', 'stopBuzzerNow', 'buzzerAlertIsDirectMessage', 'RtttlOwner::EXTERNAL_NOTIFICATION']:
+              assert marker in ext, marker
+          print('INITIAL INTEGRATION AND PRESERVATION CHECKS PASSED')
+          PY
+          git diff --check
+          if git grep -n -E '^(<<<<<<<|>>>>>>>)' -- ':!*.md'; then exit 1; fi
+          git push origin HEAD:refs/heads/integration/superbase-upstream-20260905
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          mkdir -p audit-evidence
+          git log --format='%H %s' 4cbba7006a9fed23cb1a778b7e62422ba96ee8bc..HEAD > audit-evidence/commits.txt
+          git diff --stat 4cbba7006a9fed23cb1a778b7e62422ba96ee8bc HEAD > audit-evidence/diff-stat.txt
+          git diff 4cbba7006a9fed23cb1a778b7e62422ba96ee8bc HEAD > audit-evidence/integration.diff
+          git rev-parse HEAD > audit-evidence/source-sha.txt
+          git archive HEAD | gzip > audit-evidence/source.tar.gz
+      - name: Preserve integration source and evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: superbase-integration-source
+          path: audit-evidence/
+          if-no-files-found: warn
+
+  native:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          submodules: recursive
+      - uses: ./.github/actions/setup-native
+      - name: Run relevant native tests with address sanitizer
+        shell: bash
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          mkdir -p audit-evidence
+          sed -i 's/-DBUILD_EPOCH=$UNIX_TIME/#-DBUILD_EPOCH=$UNIX_TIME/' platformio.ini
+          python3 - <<'PY'
+          import os, pathlib, re, subprocess
+          mandatory = {'test_buzzer_mode', 'test_mqtt', 'test_reliable_ack_matrix', 'test_mesh_module',
+                       'test_packet_signing', 'test_nexthop_routing', 'test_radio', 'test_position_module',
+                       'test_uptime_clock', 'test_admin_radio', 'test_muted_source', 'test_module_config'}
+          available = {p.name for p in pathlib.Path('test').glob('test_*') if p.is_dir()}
+          missing = mandatory - available
+          if missing:
+              raise SystemExit(f'Missing required suites: {sorted(missing)}')
+          selected = sorted(mandatory | {s for s in available if re.search(r'gps|power|boot_recovery|identity|crypto|channel|rtttl', s)})
+          shard = int(os.environ['SHARD'])
+          assigned = selected[shard::3]
+          if not assigned:
+              raise SystemExit('Empty test shard')
+          pathlib.Path('audit-evidence/expected-suites.txt').write_text('\n'.join(assigned)+'\n')
+          print('REQUIRED SUITES:', assigned, flush=True)
+          command = ['platformio', 'test', '-e', 'superbase-native-tests']
+          for suite in assigned:
+              command += ['--filter', suite]
+          with open('audit-evidence/native.log', 'w') as logfile:
+              process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+              for line in process.stdout:
+                  print(line, end='', flush=True)
+                  logfile.write(line)
+              code = process.wait()
+          if code:
+              raise SystemExit(code)
+          pathlib.Path('audit-evidence/result.txt').write_text('PASS: '+', '.join(assigned)+'\n')
+          PY
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: superbase-native-${{ matrix.shard }}
+          path: audit-evidence/
+
+  firmware:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          submodules: recursive
+      - name: Fresh muzi-base hardware build
+        uses: meshtastic/gh-action-firmware@main
+        with:
+          pio_platform: nrf52840
+          pio_env: muzi-base
+          pio_target: build
+      - name: Validate generated Superbase packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, json, zipfile, hashlib
+          root = pathlib.Path('release')
+          for pattern in ['firmware-muzi-base-*.mt.json', 'firmware-muzi-base-*.uf2', 'firmware-muzi-base-*-ota.zip']:
+              files = list(root.glob(pattern))
+              assert len(files) == 1, (pattern, files)
+              assert files[0].stat().st_size > 0
+          ota = next(root.glob('firmware-muzi-base-*-ota.zip'))
+          with zipfile.ZipFile(ota) as z:
+              assert z.testzip() is None
+              manifest = json.loads(z.read('manifest.json'))
+              app = manifest['manifest']['application']
+              for key in ['bin_file', 'dat_file']:
+                  assert app[key] in z.namelist()
+                  assert len(z.read(app[key])) > 0
+          uf2 = next(root.glob('firmware-muzi-base-*.uf2'))
+          assert uf2.stat().st_size % 512 == 0
+          print('OTA and UF2 package checks passed')
+          for f in sorted(root.glob('firmware-muzi-base-*')):
+              print(hashlib.sha256(f.read_bytes()).hexdigest(), f.name)
+          PY
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: superbase-reviewed-firmware
+          path: |
+            release/firmware-muzi-base-*.mt.json
+            release/firmware-muzi-base-*.uf2
+            release/firmware-muzi-base-*-ota.zip
+
+  verification:
+    needs: [prepare, native, firmware]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: All required verification jobs must pass
+        env:
+          PREPARE: ${{ needs.prepare.result }}
+          NATIVE: ${{ needs.native.result }}
+          FIRMWARE: ${{ needs.firmware.result }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          test "$PREPARE" = success
+          test "$NATIVE" = success
+          test "$FIRMWARE" = success
+          echo "Verified candidate: $SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo 'No release is published by this audit workflow.' >> "$GITHUB_STEP_SUMMARY"
