@@ -749,8 +749,10 @@ bool RadioLibInterface::maybeRecoverChipStateLoss()
 {
     // One attempt per window: the transient resets this recovers from need a single re-init, and a
     // chip that stays dead must not stall the TX/RX paths with a begin() attempt on every call
-    if (lastChipRecoveryMs && Throttle::isWithinTimespanMs(lastChipRecoveryMs, 30 * 1000UL)) {
-        LOG_DEBUG("Radio recovery suppressed, %us since the last attempt", (millis() - lastChipRecoveryMs) / 1000);
+    const uint32_t now = Time::getMillis();
+    // Zero is a valid attempt timestamp at boot and after rollover; the failure count records presence.
+    if (chipRecoveryFailures && (uint32_t)(now - lastChipRecoveryMs) < 30 * 1000UL) {
+        LOG_DEBUG("Radio recovery suppressed, %us since the last attempt", (now - lastChipRecoveryMs) / 1000);
         return false;
     }
 
@@ -761,11 +763,14 @@ bool RadioLibInterface::maybeRecoverChipStateLoss()
         // Attempts are a throttle window apart, so this is minutes of a provably deaf chip. begin() alone
         // clearly isn't reviving it; reboot to re-run init(), which redoes the power-on sequence it skips.
         LOG_ERROR("Radio still deaf after %u re-inits, rebooting", chipRecoveryFailures);
-        rebootAtMsec = millis() + DEFAULT_REBOOT_SECONDS * 1000;
+        rebootAtMsec = now + DEFAULT_REBOOT_SECONDS * 1000UL;
+        if (rebootAtMsec == 0)
+            rebootAtMsec = 1; // Zero means no reboot is armed.
     }
-    chipRecoveryFailures++;
+    if (chipRecoveryFailures < MAX_CHIP_RECOVERY_FAILURES)
+        chipRecoveryFailures++;
 
-    lastChipRecoveryMs = millis();
+    lastChipRecoveryMs = now;
     RECORD_CRITICALERROR(meshtastic_CriticalErrorCode_INVALID_RADIO_SETTING);
     LOG_ERROR("Radio chip state lost mid-operation, re-init");
     bool recovered = recoverChipStateLoss();

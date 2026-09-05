@@ -385,7 +385,8 @@ template <typename T> bool LR11x0Interface<T>::reconfigure()
         RECORD_CRITICALERROR(meshtastic_CriticalErrorCode_INVALID_RADIO_SETTING);
         LOG_ERROR("LR11x0 rejected modem params, chip state lost? Full re-init");
         if (!reinitChip() || (err = programModemParams()) != RADIOLIB_ERR_NONE) {
-            LOG_ERROR("LR11x0 unrecoverable %s%d, radio down until reboot", radioLibErr, err);
+            LOG_ERROR("LR11x0 unrecoverable %s%d, RX offline for periodic retry", radioLibErr, err);
+            rxOffline = true;
             return false;
         }
         LOG_INFO("LR11x0 recovered after re-init");
@@ -393,7 +394,7 @@ template <typename T> bool LR11x0Interface<T>::reconfigure()
 
     startReceive(); // restart receiving
 
-    return true;
+    return !rxOffline;
 }
 
 template <typename T> void LR11x0Interface<T>::clearRadioIsr()

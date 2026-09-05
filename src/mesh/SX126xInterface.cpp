@@ -117,7 +117,8 @@ template <typename T> bool SX126xInterface<T>::reinitChip()
 #endif
     // \todo Display actual typename of the adapter, not just `SX126x`
     LOG_INFO("SX126x init result %d", res);
-    if (res == RADIOLIB_ERR_CHIP_NOT_FOUND || res == RADIOLIB_ERR_SPI_CMD_FAILED)
+    // Any begin() failure is fatal to this attempt; a later command must not mask it as success.
+    if (res != RADIOLIB_ERR_NONE)
         return false;
 
     LOG_INFO("Frequency set to %f", getFreq());
@@ -289,7 +290,8 @@ template <typename T> bool SX126xInterface<T>::reconfigure()
         RECORD_CRITICALERROR(meshtastic_CriticalErrorCode_INVALID_RADIO_SETTING);
         LOG_ERROR("SX126x rejected modem params, chip state lost? Full re-init");
         if (!reinitChip() || (err = programModemParams()) != RADIOLIB_ERR_NONE) {
-            LOG_ERROR("SX126x unrecoverable %s%d, radio down until reboot", radioLibErr, err);
+            LOG_ERROR("SX126x unrecoverable %s%d, RX offline for periodic retry", radioLibErr, err);
+            rxOffline = true;
             return false;
         }
         LOG_INFO("SX126x recovered after re-init");
@@ -297,7 +299,7 @@ template <typename T> bool SX126xInterface<T>::reconfigure()
 
     startReceive(); // restart receiving
 
-    return true;
+    return !rxOffline;
 }
 
 template <typename T> int16_t SX126xInterface<T>::getCurrentRSSI()

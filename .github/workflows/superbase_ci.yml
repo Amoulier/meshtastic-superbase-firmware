@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - name: Verify repository hardware scope and custom invariants
         shell: bash
         run: |
@@ -104,32 +106,44 @@ jobs:
             exit 1
           fi
 
+      - name: Audit preserved behavior and selective source delta
+        run: python3 bin/audit-superbase-release.py --source --output audit-evidence/source-audit.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: superbase-source-audit
+          path: audit-evidence/
+          if-no-files-found: error
+
   native-critical:
-    name: Superbase critical native tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
+    name: Superbase critical native tests (${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
       - name: Setup native build
         uses: ./.github/actions/setup-native
-      - name: Disable BUILD_EPOCH
-        run: sed -i 's/-DBUILD_EPOCH=$UNIX_TIME/#-DBUILD_EPOCH=$UNIX_TIME/' platformio.ini
-      - name: Run Superbase-relevant native suites
+      - name: Verify source identity and run attributed tests
         shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
-          timeout --signal=TERM --kill-after=30s 35m platformio test -e superbase-native-tests \
-            --filter test_buzzer_mode \
-            --filter test_mqtt \
-            --filter test_reliable_ack_matrix \
-            --filter test_mesh_module \
-            --filter test_packet_signing \
-            --filter test_nexthop_routing \
-            --filter test_radio \
-            --filter test_position_module \
-            --filter test_uptime_clock
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          sed -i 's/-DBUILD_EPOCH=$UNIX_TIME/#-DBUILD_EPOCH=$UNIX_TIME/' platformio.ini
+          python3 bin/test-superbase.py --shard "$SHARD" --shards 3
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: superbase-native-${{ matrix.shard }}
+          path: audit-evidence/
+          if-no-files-found: error
 
   build-superbase:
     name: Build MuziWorks Superbase

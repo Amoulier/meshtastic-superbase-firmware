@@ -27,6 +27,21 @@ jobs:
           pio_env: muzi-base
           pio_target: build
 
+      - name: Audit exact source and install packages
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git diff --exit-code
+          python3 bin/audit-superbase-release.py --packages release --sha "$EXPECTED_SHA" --output audit-evidence/package-audit.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: superbase-package-audit-${{ inputs.version }}
+          path: audit-evidence/
+          if-no-files-found: error
+
       - name: Job summary
         run: |
           echo "## muzi-base" >> "$GITHUB_STEP_SUMMARY"

@@ -6,7 +6,20 @@ This fork is intentionally scoped to the Superbase. Hardware definitions, board 
 
 ## Current release
 
-The current installable release is **v2.8.0-superbase.5**. Use the repository's **Releases** page for the validated OTA, UF2, manifest, and bundle files.
+The current installable release is **v2.8.0-superbase.7**. Use the repository's **Releases** page for the validated OTA, UF2, manifest, and bundle files.
+
+## Selective reliability update
+
+`v2.8.0-superbase.7` integrates reviewed upstream fixes for Bluetooth administration,
+SX1262/LR1121 radio recovery, GPS fix tracking, muted-message screen behavior,
+security-key restoration and module metadata. It also fixes recovery edge cases
+found during the integration audit. Other physical board targets, radio backends,
+protocol schemas and the validated nRF52 toolchain are not imported or changed.
+
+See `docs/SUPERBASE_RELEASE_7.md` for commit provenance, audit scope and limitations.
+Release assets are published only after the required native suites, exact-source
+Superbase build, source-preservation checks and OTA/UF2 package audit pass.
+Automated validation is not a physical-device endurance or battery-life test.
 
 ## Superbase-specific behavior
 
