@@ -1,59 +1,44 @@
-name: Withdraw defective Superbase 7 release
+name: Superbase navigation baseline diagnostics
 
 on:
   push:
     branches: [audit/superbase-selective-20260905]
 
-permissions:
-  contents: write
-
-concurrency:
-  group: superbase-final-release-publication
-  cancel-in-progress: false
+permissions: read-all
 
 jobs:
-  withdraw:
-    if: github.repository == 'Amoulier/meshtastic-superbase-firmware'
+  baseline-image:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - name: Delete only the user-reported defective release and its assets
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - uses: actions/checkout@v7
+        with:
+          ref: 7c39922e028a68dbe3af7470aea8eb8d849fc569
+          submodules: recursive
+      - uses: meshtastic/gh-action-firmware@main
+        with:
+          pio_platform: nrf52840
+          pio_env: muzi-base
+          pio_target: build
+      - name: Collect actual linked handlers and navigation libraries
         run: |
           set -euo pipefail
+          mkdir -p navigation-baseline
+          test "$(git rev-parse HEAD)" = 7c39922e028a68dbe3af7470aea8eb8d849fc569
+          cp .pio/build/muzi-base/firmware.elf navigation-baseline/
+          readelf -sW .pio/build/muzi-base/firmware.elf > navigation-baseline/symbols.txt
           python3 - <<'PY'
-          import json, os, urllib.request, urllib.error
-          base = 'https://api.github.com/repos/Amoulier/meshtastic-superbase-firmware'
-          headers = {'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
-                     'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'}
-          def api(path, method='GET'):
-              with urllib.request.urlopen(urllib.request.Request(base+path, method=method, headers=headers), timeout=30) as r:
-                  body = r.read()
-                  return json.loads(body) if body else None
-          try:
-              release = api('/releases/383302135')
-          except urllib.error.HTTPError as exc:
-              if exc.code != 404: raise
-              release = None
-          if release is not None:
-              assert release['tag_name'] == 'v2.8.0-superbase.7'
-              assert release['target_commitish'] == '7c39922e028a68dbe3af7470aea8eb8d849fc569'
-              api('/releases/383302135', 'DELETE')
-          for path in ['/releases/383302135', '/releases/tags/v2.8.0-superbase.7']:
-              try:
-                  api(path)
-              except urllib.error.HTTPError as exc:
-                  if exc.code != 404: raise
-              else:
-                  raise RuntimeError('Defective release is still available: '+path)
-          result = {'withdrawn_release':'v2.8.0-superbase.7','release_id':383302135,
-                    'status':'REMOVED','reason':'User reports built-in navigation buttons do not change BaseUI',
-                    'tag_retained_for_audit':True,'no_replacement_release_published':True}
-          with open('withdrawal.json','w') as f: json.dump(result,f,indent=2)
-          print(json.dumps(result,indent=2))
+          from pathlib import Path
+          import zipfile
+          targets = {'OLEDDisplayUi.cpp','OLEDDisplayUi.h','OLEDDisplay.cpp','OLEDDisplay.h','Thread.cpp','Thread.h','ThreadController.cpp','ThreadController.h'}
+          with zipfile.ZipFile('navigation-baseline/dependencies.zip','w',zipfile.ZIP_DEFLATED) as z:
+              for p in Path('.pio/libdeps/muzi-base').rglob('*'):
+                  if p.name in targets and p.is_file():
+                      z.write(p,str(p))
           PY
       - uses: actions/upload-artifact@v7
+        if: always()
         with:
-          name: superbase-7-withdrawal
-          path: withdrawal.json
+          name: superbase-navigation-baseline
+          path: navigation-baseline/
           if-no-files-found: error
