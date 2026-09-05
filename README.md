@@ -1,3 +1,5 @@
+> **Withdrawn: v2.8.0-superbase.7.** Built-in navigation was reported nonfunctional after installation. Its release and binary assets have been removed. The navigation correction is a candidate pending physical-device confirmation; do not reinstall the withdrawn files.
+
 # MuziWorks Superbase Meshtastic Firmware
 
 Custom Meshtastic firmware maintained exclusively for the **MuziWorks Superbase** (`muzi-base`, nRF52840).

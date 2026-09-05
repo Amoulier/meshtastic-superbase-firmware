@@ -14,6 +14,7 @@ MANDATORY = {
     'test_packet_signing', 'test_nexthop_routing', 'test_radio', 'test_position_module',
     'test_uptime_clock', 'test_admin_radio', 'test_muted_source', 'test_module_config',
     'test_superbase_radio_recovery', 'test_gps_update_scheduling',
+    'test_trackball_press', 'test_superbase_navigation',
 }
 
 

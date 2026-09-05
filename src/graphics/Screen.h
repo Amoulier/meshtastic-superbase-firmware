@@ -212,6 +212,9 @@ class Screen;
  */
 class Screen : public concurrency::OSThread
 {
+#ifdef PIO_UNIT_TESTING
+    friend struct ScreenNavigationTest;
+#endif
     CallbackObserver<Screen, const meshtastic::Status *> powerStatusObserver =
         CallbackObserver<Screen, const meshtastic::Status *>(this, &Screen::handleStatusUpdate);
     CallbackObserver<Screen, const meshtastic::Status *> gpsStatusObserver =
