@@ -1,115 +1,60 @@
-name: Superbase selective integration audit
+name: Superbase final release publication
 
 on:
   push:
     branches: [audit/superbase-selective-20260905]
 
-permissions: read-all
+permissions:
+  contents: write
+  actions: read
+
 concurrency:
-  group: superbase-selective-integration
+  group: superbase-final-release-publication
   cancel-in-progress: false
 
 env:
   CANDIDATE_SHA: 7c39922e028a68dbe3af7470aea8eb8d849fc569
+  AUDIT_RUN: '33977313891'
 
 jobs:
-  source:
+  publish:
+    if: github.repository == 'Amoulier/meshtastic-superbase-firmware'
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout reviewed publication scripts
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.sha }}
+          path: publication-tools
+      - name: Stage publication scripts outside candidate source
+        run: |
+          cp publication-tools/.github/scripts/prepare-superbase-release.py "$RUNNER_TEMP/prepare-superbase-release.py"
+          cp publication-tools/.github/scripts/publish-superbase-release.py "$RUNNER_TEMP/publish-superbase-release.py"
+          python3 -m py_compile "$RUNNER_TEMP/prepare-superbase-release.py" "$RUNNER_TEMP/publish-superbase-release.py"
+      - name: Checkout exact audited firmware source
+        uses: actions/checkout@v7
         with:
           ref: ${{ env.CANDIDATE_SHA }}
           fetch-depth: 0
-      - name: Audit source scope and preserved Superbase behavior
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
-          python3 bin/audit-superbase-release.py --source --output audit-evidence/source-audit.json
-          git archive HEAD | gzip > audit-evidence/source.tar.gz
-          git diff 4cbba7006a9fed23cb1a778b7e62422ba96ee8bc HEAD > audit-evidence/final-source.diff
-          git log --format='%H %s' 4cbba7006a9fed23cb1a778b7e62422ba96ee8bc..HEAD > audit-evidence/commits.txt
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: superbase-final-source
-          path: audit-evidence/
-          if-no-files-found: error
-
-  native:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1, 2]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.CANDIDATE_SHA }}
-          submodules: recursive
-      - uses: ./.github/actions/setup-native
-      - name: Verify source identity and run attributed isolated tests
+          path: candidate
+      - name: Reconcile all audit evidence and publish verified final assets
+        working-directory: candidate
         env:
-          SHARD: ${{ matrix.shard }}
+          GH_TOKEN: ${{ github.token }}
+          PREPARE_SCRIPT: ${{ runner.temp }}/prepare-superbase-release.py
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
-          sed -i 's/-DBUILD_EPOCH=$UNIX_TIME/#-DBUILD_EPOCH=$UNIX_TIME/' platformio.ini
-          python3 bin/test-superbase.py --shard "$SHARD" --shards 3
-      - uses: actions/upload-artifact@v7
+          python3 "$RUNNER_TEMP/publish-superbase-release.py"
+          echo 'Final release v2.8.0-superbase.7 published after exact-source audits and uploaded-asset SHA-256 checks.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain published files and publication confirmation
         if: always()
+        uses: actions/upload-artifact@v7
         with:
-          name: superbase-final-native-${{ matrix.shard }}
+          name: superbase-published-release
           path: |
-            audit-evidence/
-            .pio/test-state/
+            candidate/release-assets/
+            candidate/publication-result.json
+            candidate/release-notes.md
           if-no-files-found: error
-          include-hidden-files: true
-
-  firmware:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.CANDIDATE_SHA }}
-          submodules: recursive
-      - name: Fresh exact-source Superbase build
-        uses: meshtastic/gh-action-firmware@main
-        with:
-          pio_platform: nrf52840
-          pio_env: muzi-base
-          pio_target: build
-      - name: Audit matching OTA and UF2 images and memory boundaries
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
-          git diff --exit-code
-          python3 bin/audit-superbase-release.py --packages release --sha "$CANDIDATE_SHA" --output release/package-audit.json
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: superbase-final-firmware
-          path: |
-            release/firmware-muzi-base-*.mt.json
-            release/firmware-muzi-base-*.uf2
-            release/firmware-muzi-base-*-ota.zip
-            release/package-audit.json
-          if-no-files-found: error
-
-  verification:
-    needs: [source, native, firmware]
-    if: always()
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Require successful source, native and firmware audits
-        env:
-          SOURCE: ${{ needs.source.result }}
-          NATIVE: ${{ needs.native.result }}
-          FIRMWARE: ${{ needs.firmware.result }}
-        run: |
-          test "$SOURCE" = success
-          test "$NATIVE" = success
-          test "$FIRMWARE" = success
-          echo "All automated candidate gates passed: $CANDIDATE_SHA" >> "$GITHUB_STEP_SUMMARY"
-          echo 'Publication requires final evidence review; this workflow does not publish.' >> "$GITHUB_STEP_SUMMARY"
