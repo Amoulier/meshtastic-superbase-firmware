@@ -141,7 +141,7 @@ void setUp() {
     realClock = false;
     Time::setTestMillis(100000);
     // Broker's power policy reads isScreenOn; the UI fixture will be attached only in UI tests.
-    screen = std::make_unique<graphics::Screen>(ScanI2C::ADDRESS_NONE, meshtastic_Config_DisplayConfig_OledType_AUTO, GEOMETRY_128_128);
+    screen = std::make_unique<graphics::Screen>(ScanI2C::ADDRESS_NONE, meshtastic_Config_DisplayConfig_OledType_OLED_AUTO, GEOMETRY_128_128);
     graphics::ScreenNavigationTest::power(*screen, true);
     inputBroker = new InputBroker();
     capture.events.clear();
