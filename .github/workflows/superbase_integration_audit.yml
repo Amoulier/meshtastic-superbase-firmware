@@ -1,44 +1,188 @@
-name: Superbase navigation baseline diagnostics
+name: Superbase navigation correction audit
 
 on:
   push:
     branches: [audit/superbase-selective-20260905]
 
 permissions: read-all
+concurrency:
+  group: superbase-navigation-audit
+  cancel-in-progress: false
 
 jobs:
-  baseline-image:
+  prepare:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.fix.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: 7c39922e028a68dbe3af7470aea8eb8d849fc569
+          fetch-depth: 0
+      - name: Apply navigation-only source correction
+        id: fix
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64,gzip,hashlib,subprocess
+          patch = gzip.decompress(base64.b64decode('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'.replace('DbDVk','DbDVk')))
+          assert hashlib.sha256(patch).hexdigest() == '7927c05312a2fc8d2cb62bfcb0df27f87ada95622f52c56b1d333a5c4df31bf0'
+          subprocess.run(['git','apply','--index'],input=patch,check=True)
+          PY
+          git diff --cached --check
+          git config user.name Amoulier
+          git config user.email 19624653+Amoulier@users.noreply.github.com
+          git commit -m 'fix(superbase): retain navigation taps and poll switches when IRQs are unavailable'
+          python3 bin/audit-superbase-release.py --source --output audit-evidence/source-audit.json
+          git push origin HEAD:refs/heads/fix/superbase-navigation-20260905
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git diff 7c39922e028a68dbe3af7470aea8eb8d849fc569 HEAD > audit-evidence/navigation.diff
+          git archive HEAD | gzip > audit-evidence/source.tar.gz
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: navigation-source
+          path: audit-evidence/
+          if-no-files-found: error
+
+  native-after:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          submodules: recursive
+      - uses: ./.github/actions/setup-native
+      - name: Full corrected-source native regression tests
+        env:
+          EXPECTED_SHA: ${{ needs.prepare.outputs.sha }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          sed -i 's/-DBUILD_EPOCH=$UNIX_TIME/#-DBUILD_EPOCH=$UNIX_TIME/' platformio.ini
+          python3 bin/test-superbase.py --shard "$SHARD" --shards 3
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: navigation-native-${{ matrix.shard }}
+          path: |
+            audit-evidence/
+            .pio/test-state/
+          include-hidden-files: true
+          if-no-files-found: error
+
+  regression-before:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
           ref: 7c39922e028a68dbe3af7470aea8eb8d849fc569
           submodules: recursive
-      - uses: meshtastic/gh-action-firmware@main
-        with:
-          pio_platform: nrf52840
-          pio_env: muzi-base
-          pio_target: build
-      - name: Collect actual linked handlers and navigation libraries
+      - uses: ./.github/actions/setup-native
+      - name: Reproduce failures using withdrawn production driver and new tests only
+        env:
+          FIXED_SHA: ${{ needs.prepare.outputs.sha }}
         run: |
           set -euo pipefail
-          mkdir -p navigation-baseline
-          test "$(git rev-parse HEAD)" = 7c39922e028a68dbe3af7470aea8eb8d849fc569
-          cp .pio/build/muzi-base/firmware.elf navigation-baseline/
-          readelf -sW .pio/build/muzi-base/firmware.elf > navigation-baseline/symbols.txt
+          git fetch origin "$FIXED_SHA"
+          mkdir -p test/test_superbase_navigation audit-evidence
+          for path in test/test_superbase_navigation/test_main.cpp src/graphics/Screen.h test/state-manifest.tsv; do
+            git show "$FIXED_SHA:$path" > "$path"
+          done
+          git diff --exit-code -- src/input/
+          sed -i 's/-DBUILD_EPOCH=$UNIX_TIME/#-DBUILD_EPOCH=$UNIX_TIME/' platformio.ini
+          set +e
+          platformio test -e superbase-native-tests --filter test_superbase_navigation --junit-output-path audit-evidence/baseline-junit.xml > audit-evidence/baseline.log 2>&1
+          result=$?
+          set -e
+          cat audit-evidence/baseline.log
+          test "$result" != 0
           python3 - <<'PY'
+          import xml.etree.ElementTree as ET, json
           from pathlib import Path
-          import zipfile
-          targets = {'OLEDDisplayUi.cpp','OLEDDisplayUi.h','OLEDDisplay.cpp','OLEDDisplay.h','Thread.cpp','Thread.h','ThreadController.cpp','ThreadController.h'}
-          with zipfile.ZipFile('navigation-baseline/dependencies.zip','w',zipfile.ZIP_DEFLATED) as z:
-              for p in Path('.pio/libdeps/muzi-base').rglob('*'):
-                  if p.name in targets and p.is_file():
-                      z.write(p,str(p))
+          root=ET.parse('audit-evidence/baseline-junit.xml').getroot()
+          cases=list(root.iter('testcase'))
+          assert len(cases)==21, [(c.attrib,c.find('error') is not None) for c in cases]
+          assert not any(c.find('error') is not None or c.find('skipped') is not None for c in cases)
+          failed={c.attrib['name'] for c in cases if c.find('failure') is not None}
+          required={'test_released_left_tap','test_released_right_tap','test_right_without_interrupt','test_select_without_interrupt','test_ui_right_without_irq_changes_frame'}
+          assert required <= failed, failed
+          report={'withdrawn_source':'7c39922e028a68dbe3af7470aea8eb8d849fc569','status':'REGRESSION_REPRODUCED','cases':len(cases),'failed':sorted(failed),'hardware_tested':False}
+          Path('audit-evidence/regression-before.json').write_text(json.dumps(report,indent=2))
+          print(json.dumps(report,indent=2))
           PY
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: superbase-navigation-baseline
-          path: navigation-baseline/
+          name: navigation-regression-before
+          path: |
+            audit-evidence/
+            .pio/test-state/
+          include-hidden-files: true
           if-no-files-found: error
+
+  firmware:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          submodules: recursive
+      - uses: meshtastic/gh-action-firmware@218dd4b473a37d7925d7cb2867ccddfba3ec2cff
+        with:
+          pio_platform: nrf52840
+          pio_env: muzi-base
+          pio_target: build
+      - name: Validate candidate packages and linked hardware handlers
+        env:
+          EXPECTED_SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git diff --exit-code
+          python3 bin/audit-superbase-release.py --packages release --sha "$EXPECTED_SHA" --output release/package-audit.json
+          mkdir -p navigation-elf
+          cp .pio/build/muzi-base/firmware-muzi-base-*.elf navigation-elf/
+          readelf -sW .pio/build/muzi-base/firmware-muzi-base-*.elf > navigation-elf/symbols.txt
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: navigation-candidate-firmware
+          path: |
+            release/firmware-muzi-base-*.mt.json
+            release/firmware-muzi-base-*.uf2
+            release/firmware-muzi-base-*-ota.zip
+            release/package-audit.json
+            navigation-elf/
+          if-no-files-found: error
+
+  verification:
+    needs: [prepare, native-after, regression-before, firmware]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require reproducible fault and passing corrected source
+        env:
+          PREPARE: ${{ needs.prepare.result }}
+          NATIVE: ${{ needs.native-after.result }}
+          BASELINE: ${{ needs.regression-before.result }}
+          FIRMWARE: ${{ needs.firmware.result }}
+        run: |
+          test "$PREPARE" = success
+          test "$NATIVE" = success
+          test "$BASELINE" = success
+          test "$FIRMWARE" = success
+          echo 'Candidate validated by automated checks. No release publication; physical-device confirmation remains pending.' >> "$GITHUB_STEP_SUMMARY"
