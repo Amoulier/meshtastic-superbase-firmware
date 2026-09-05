@@ -1,0 +1,350 @@
+name: Publish Superbase 8 navigation correction
+
+on:
+  push:
+    branches: [release/superbase8-20260905]
+    paths: [.github/workflows/publish_superbase8.yml]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-superbase-8
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'Amoulier/meshtastic-superbase-firmware'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out the exact tested firmware source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: cc704b80956017ded590de61bf2a667eb36cc820
+          fetch-depth: 0
+      - name: Revalidate immutable evidence and publish only matching artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import csv
+          import hashlib
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import shutil
+          import subprocess
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          import xml.etree.ElementTree as ET
+          import zipfile
+
+          REPO = 'Amoulier/meshtastic-superbase-firmware'
+          TAG = 'v2.8.0-superbase.8'
+          SHA = 'cc704b80956017ded590de61bf2a667eb36cc820'
+          BAD = 'v2.8.0-superbase.7'
+          RUN = 33981068477
+          RUN_SHA = '496bab9fcebe1223608bd5b19e911b4e237c5709'
+          CANDIDATE_RUN = 33980553791
+          E = Path('publication-evidence')
+          OUT = Path('release-assets')
+          E.mkdir()
+          OUT.mkdir()
+
+          def api(path, method='GET', value=None, raw=None):
+              if path.startswith('https://uploads.github.com/'):
+                  assert path.startswith('https://uploads.github.com/repos/'+REPO+'/releases/')
+                  url = path
+              else:
+                  assert path.startswith('/repos/'+REPO+'/')
+                  url = 'https://api.github.com'+path
+              headers = {'Authorization':'Bearer '+os.environ['GH_TOKEN'],
+                         'Accept':'application/vnd.github+json',
+                         'X-GitHub-Api-Version':'2022-11-28', 'User-Agent':'superbase-release8'}
+              data = raw
+              if value is not None:
+                  data = json.dumps(value).encode()
+                  headers['Content-Type'] = 'application/json'
+              elif raw is not None:
+                  headers['Content-Type'] = 'application/octet-stream'
+              req = urllib.request.Request(url, data=data, headers=headers, method=method)
+              with urllib.request.urlopen(req, timeout=120) as r:
+                  body = r.read()
+                  return json.loads(body) if body else None
+
+          def get(path):
+              return api('/repos/'+REPO+path)
+
+          def absent(path):
+              try:
+                  get(path)
+              except urllib.error.HTTPError as exc:
+                  if exc.code == 404:
+                      return
+                  raise
+              raise RuntimeError('Resource must remain absent: '+path)
+
+          def write_json(path, data):
+              Path(path).write_text(json.dumps(data, indent=2)+'\n')
+
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+
+          def one(root, name):
+              found = list(root.rglob(name))
+              assert len(found) == 1, (root, name, found)
+              return found[0]
+
+          def load(root, name):
+              return json.loads(one(root, name).read_text())
+
+          def verify_gate():
+              run = get('/actions/runs/'+str(RUN))
+              assert run['status'] == 'completed' and run['conclusion'] == 'success'
+              assert run['head_sha'] == RUN_SHA
+              assert run['path'] == '.github/workflows/superbase_integration_audit.yml'
+              assert run['repository']['full_name'] == run['head_repository']['full_name'] == REPO
+              jobs = get('/actions/runs/'+str(RUN)+'/jobs?per_page=100')
+              assert jobs['total_count'] == len(jobs['jobs']) == 2
+              assert {j['name'] for j in jobs['jobs']} == {'baseline', 'verification'}
+              assert all(j['status'] == 'completed' and j['conclusion'] == 'success' for j in jobs['jobs'])
+              absent('/releases/tags/'+BAD)
+              return run, jobs
+
+          assert git('rev-parse', 'HEAD') == SHA
+          assert not git('diff', 'HEAD')
+          gate_run, gate_jobs = verify_gate()
+          write_json(E/'gate-run.json', gate_run)
+          write_json(E/'gate-jobs.json', gate_jobs)
+          candidate = get('/actions/runs/'+str(CANDIDATE_RUN))
+          assert candidate['head_sha'] == 'cdb7f15bef99f9516fa8085ef52f8b65767b7ab8'
+          assert candidate['status'] == 'completed'
+          jobs = get('/actions/runs/'+str(CANDIDATE_RUN)+'/jobs?per_page=100')
+          byname = {j['name']:j for j in jobs['jobs']}
+          required = {'prepare', 'firmware', 'native-after (0)', 'native-after (1)', 'native-after (2)'}
+          assert required <= byname.keys()
+          assert all(byname[n]['status'] == 'completed' and byname[n]['conclusion'] == 'success' for n in required)
+          # Its negative-comparison wrapper failure was independently resolved by RUN.
+          # No positive candidate test is allowed to fail or be waived.
+          write_json(E/'candidate-jobs-live.json', jobs)
+          inventory = get('/actions/runs/'+str(RUN)+'/artifacts?per_page=100')
+          assert inventory['total_count'] == len(inventory['artifacts']) == 2
+          pinned = {
+              'navigation-final-verification': (9973854399, 'fe17805564e03a1ac9cbfae97a498d7feed35e71417afb9ffe23127dffb7490f', 'verified'),
+              'navigation-baseline-native-exit': (9973851245, 'f0d15bc5e7a86ca061f5f63f39383467fd5d99b28d7d9f071061952ee970a699', 'baseline'),
+          }
+          assert {a['name'] for a in inventory['artifacts']} == set(pinned)
+          for a in inventory['artifacts']:
+              aid, digest, folder = pinned[a['name']]
+              assert a['id'] == aid and not a['expired']
+              assert a['digest'] == 'sha256:'+digest and a['workflow_run']['head_sha'] == RUN_SHA
+              archive = E/(a['name']+'.zip')
+              with archive.open('wb') as output:
+                  subprocess.run(['gh', 'api', 'repos/'+REPO+'/actions/artifacts/'+str(aid)+'/zip'], stdout=output, check=True)
+              assert hashlib.sha256(archive.read_bytes()).hexdigest() == digest
+              with zipfile.ZipFile(archive) as z:
+                  assert z.testzip() is None and len(z.namelist()) == len(set(z.namelist()))
+                  assert all(not Path(n).is_absolute() and '..' not in Path(n).parts for n in z.namelist())
+                  z.extractall(E/folder)
+          write_json(E/'artifact-provenance.json', inventory)
+          V = E/'verified'
+          report = load(V, 'FINAL_NAVIGATION_AUDIT.json')
+          assert report['status'] == 'PASS' and report['source_sha'] == SHA
+          assert report['candidate_run'] == CANDIDATE_RUN and report['baseline_verification_run'] == RUN
+          assert report['suite_count'] == 24 and report['test_cases'] == 614
+          assert report['failures'] == report['errors'] == report['skipped'] == 0
+          assert report['hardware_tested'] is False
+          baseline = load(E/'baseline', 'baseline-verification.json')
+          assert baseline['status'] == 'EXPECTED_BASELINE_FAILURES_CONFIRMED'
+          assert baseline['source_sha'] == '7c39922e028a68dbe3af7470aea8eb8d849fc569'
+          assert baseline['test_fixture_sha'] == SHA and baseline['cases'] == 21
+          assert baseline['native_exit_code'] == len(baseline['failed']) == 18
+          assert len(baseline['passed']) == 3 and baseline['skipped'] == 0
+          assert baseline['crash_or_sanitizer_error'] is False
+          subprocess.run(['python3', 'bin/audit-superbase-release.py', '--source', '--output', str(E/'source-publication-audit.json')], check=True)
+          assert load(E, 'source-publication-audit.json') == report['source_audit']
+          spec = importlib.util.spec_from_file_location('superbase_tests', 'bin/test-superbase.py')
+          tests = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(tests)
+          available = {p.name for p in Path('test').glob('test_*') if p.is_dir()}
+          expected = sorted(tests.MANDATORY | {s for s in available if re.search(r'gps|power|boot_recovery|identity|crypto|channel|rtttl', s)})
+          assert len(expected) == 24
+          total = 0
+          counts = {}
+          for shard in range(3):
+              folder = V/('native-'+str(shard))
+              result = load(folder, 'result.json')
+              assigned = expected[shard::3]
+              assert result['status'] == 'PASS' and result['source_sha'] == SHA and result['suites'] == assigned
+              assert load(folder, 'expected-suites.json') == assigned
+              junit = one(folder, 'junit.xml')
+              subprocess.run(['python3', 'bin/check-test-attribution.py', '--expect', ' '.join(assigned), str(junit)], check=True)
+              xml = ET.parse(junit).getroot()
+              cases = list(xml.iter('testcase'))
+              assert cases and len(cases) == result['tests']
+              assert not any(c.find(k) is not None for c in cases for k in ['failure', 'error', 'skipped'])
+              for suite in xml.iter('testsuite'):
+                  entries = suite.findall('testcase')
+                  if entries:
+                      name = suite.attrib['name'].split(':', 1)[1]
+                      assert name in assigned and name not in counts
+                      counts[name] = len(entries)
+              rows = list(csv.reader(one(folder, 'state-summary.tsv').open(), delimiter='\t'))
+              assert len(rows) == len(assigned) and {r[0] for r in rows} == set(assigned)
+              for r in rows:
+                  assert len(r) == 8 and r[1] == 'PASS' and r[2] == 'CLEAN' and not r[4] and not r[5] and r[6] == 'WITHIN', r
+              total += len(cases)
+          assert total == 614 and counts == report['suite_counts'] and counts['test_superbase_navigation'] == 21
+          package_path = one(V/'firmware', 'package-audit.json')
+          subprocess.run(['python3', 'bin/audit-superbase-release.py', '--packages', str(package_path.parent), '--sha', SHA, '--output', str(E/'package-publication-audit.json')], check=True)
+          package = load(E, 'package-publication-audit.json')
+          assert package == report['package_audit'] == json.loads(package_path.read_text())
+          known = {
+              'firmware-muzi-base-2.8.0.cc704b8-ota.zip': '179dcfe06bf54f8fa9e5d8904a3b27bec96bb7dad341a4198f98d6925e86b445',
+              'firmware-muzi-base-2.8.0.cc704b8.uf2': 'ea8b1099f4d417f74fa530234fce88f52ae1347808bca96fb512c503cd83bcd9',
+              'firmware-muzi-base-2.8.0.cc704b8.mt.json': '3a248a2482a7658d236457ccb07298ce625419154a2b9aa4206bf56a00df4f6b',
+          }
+          assert package['sha256'] == known
+          for name, digest in known.items():
+              src = package_path.parent/name
+              assert hashlib.sha256(src.read_bytes()).hexdigest() == digest
+              shutil.copy2(src, OUT/name)
+          # The release tag targets the built SHA, not a later documentation-only commit.
+          develop = get('/git/ref/heads/develop')['object']['sha']
+          subprocess.run(['git', 'fetch', 'origin', develop], check=True)
+          subprocess.run(['git', 'merge-base', '--is-ancestor', SHA, develop], check=True)
+          changed = set(git('diff', '--name-only', SHA, develop).splitlines())
+          assert changed <= {'README.md', 'docs/SUPERBASE_NAVIGATION_RESULTS.md'}, changed
+          notes = f'''# MuziWorks Superbase — Navigation Correction
+
+          **Final release {TAG}. Firmware version: 2.8.0.cc704b8.**
+          Exact firmware source: `{SHA}`. These are the identical OTA and UF2 files supplied as the audited navigation candidate; they were not rebuilt or substituted for publication.
+
+          ## Important status
+          Release `{BAD}` remains withdrawn because navigation was reported nonfunctional. Do not install its old binaries. Its Git tag is retained for audit history only.
+          This release is published at the repository owner's explicit request after automated verification. **No confirmation of repaired navigation on the owner's physical Superbase has yet been recorded.** Final release status is not a claim of hardware validation.
+
+          ## Navigation correction
+          - Preserve brief direction taps recorded by an interrupt, even when the switch is released before the next poll.
+          - Add sampled-level fallback when a button interrupt is not delivered.
+          - Use independent per-button state and debounce, wrap-safe hold/repeat timing and cooperative-loop wakeup.
+          - Add initialization/input logs and regression tests through the production input broker and BaseUI handlers.
+          - Preserve board GPIO mappings; no factory reset, pin override or identity regeneration is required by this correction.
+
+          The identified input defects existed in both .6 and .7. Controlled tests demonstrate these defects and their correction, but do not establish the exact cause of the owner's complete hardware nonresponse. No GPIOTE exhaustion was observed on that device.
+
+          ## Retained selective upstream improvements
+          BLE/admin configuration and restoration (#11651), SX1262/LR1121 radio recovery (#11676/#11678), BaseUI banners/mute handling (#11671/#11688), GPS fix tracking (#11697), identity-key restoration checks (#11686), and module availability metadata (#11709).
+          This remains a selective 2.8.0 fork, not a full upstream 2.8.1 merge. The only physical target is `muzi-base` / nRF52840.
+
+          ## Automated evidence
+          - **614 test cases in 24 suites; 0 failures, 0 errors, 0 skipped in the corrected candidate.**
+          - Same navigation fixture: withdrawn driver 18 assertion failures / 3 passes; corrected candidate 21 passes.
+          - AddressSanitizer, test attribution and isolated-state checks passed. Deliberately injected error logs remained within declared test budgets.
+          - Fresh exact-source muzi-base build passed in candidate run {CANDIDATE_RUN}.
+          - OTA/UF2 equivalence, CRC, manifest hashes, SoftDevice metadata, family ID, blocks, vectors and protected flash boundaries passed; repeated before publication.
+          - Application: 754,152 bytes. Static RAM: 98,332 bytes (not runtime free heap). 48,664 bytes clear of reserved warm-store flash.
+          - Final baseline/evidence verification: https://github.com/{REPO}/actions/runs/{RUN}
+          - Publication re-verification: https://github.com/{REPO}/actions/runs/{os.environ['GITHUB_RUN_ID']}
+          - The earlier candidate-run negative-comparison wrapper misclassified Unity's positive failure-count exit. The independent final verification resolved that reporting issue; no candidate failure was waived.
+
+          ## Preserved custom behavior
+          MQTT implicit ACK, DMs Only buzzer, independent notification outputs, RTTTL ownership/locking, 12-hour stationary position interval, IMU/magnetometer sleep, existing GPS/display power handling, OTAFIX update path, TX power and RX Boosted Gain policy.
+
+          ## Installation
+          Back up configuration first. **OTA:** use `firmware-muzi-base-2.8.0.cc704b8-ota.zip` without extraction, with the MuziWorks OTAFIX bootloader. **USB:** copy `firmware-muzi-base-2.8.0.cc704b8.uf2` to the bootloader drive. The bundle and audit ZIPs are not OTA packages.
+          A node already running `2.8.0.cc704b8` has these same firmware bytes and does not need reflashing merely because the release tag changed.
+
+          **Validation limits:** simulated GPIO and an in-memory display do not prove electrical interrupt delivery or physical OLED behavior. There are no new physical-device, battery-life, RF-range or endurance results. The exact reported hardware symptom remains unconfirmed. Passing checks means no errors detected by those checks, not absence of every possible defect.
+          '''
+          # Remove only the indentation used to embed this text in the Python block.
+          notes = '\n'.join(line[10:] if line.startswith('          ') else line for line in notes.splitlines())+'\n'
+          Path('release-notes.md').write_text(notes)
+          publication_report = dict(report)
+          publication_report.pop('release_published', None)
+          publication_report.update({'release_tag':TAG, 'publication_gate':'PASS',
+                                     'publication_run':int(os.environ['GITHUB_RUN_ID']),
+                                     'firmware_rebuilt_for_publication':False,
+                                     'physical_navigation_confirmed':False,
+                                     'baseline_comparison':baseline,
+                                     'source_rechecked_before_publication':True,
+                                     'packages_rechecked_before_publication':True})
+          auditname = 'superbase-v2.8.0-superbase.8-audit.json'
+          write_json(OUT/auditname, publication_report)
+          with zipfile.ZipFile(OUT/'superbase-v2.8.0-superbase.8-audit-evidence.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+              for p in sorted(E.rglob('*')):
+                  if p.is_file() and p.suffix in {'.json', '.xml', '.tsv', '.txt', '.log', '.diff'}:
+                      z.write(p, str(p.relative_to(E)))
+              for path in ['bin/audit-superbase-release.py', 'bin/check-test-attribution.py', 'bin/test-superbase.py', 'test/test_superbase_navigation/test_main.cpp', 'docs/SUPERBASE_NAVIGATION_AUDIT.md']:
+                  z.write(path, 'audited-source/'+path)
+              z.writestr('RELEASE_NOTES.md', notes)
+          with zipfile.ZipFile(OUT/'firmware-muzi-base-v2.8.0-superbase.8-bundle.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+              for name in sorted(known):
+                  z.write(OUT/name, name)
+              z.write(OUT/auditname, auditname)
+              z.writestr('SHA256SUMS.txt', ''.join(d+'  '+n+'\n' for n,d in sorted(known.items())))
+              z.writestr('INSTALL.txt', 'MuziWorks Superbase only. Firmware 2.8.0.cc704b8.\nBack up configuration. OTA: use the inner -ota.zip WITHOUT extraction and the OTAFIX bootloader. USB: use .uf2. This bundle itself is NOT an OTA package.\nNo factory reset or pin override is required by this correction.\nAutomated audits passed; physical navigation confirmation remains pending.\n')
+          (OUT/'SHA256SUMS.txt').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name+'\n' for p in sorted(OUT.iterdir())))
+          local = {p.name:p for p in OUT.iterdir()}
+          assert len(local) == 7
+          verify_gate()
+          absent('/releases/tags/'+TAG)
+          try:
+              ref = get('/git/ref/tags/'+TAG)
+              assert ref['object']['type'] == 'commit' and ref['object']['sha'] == SHA
+          except urllib.error.HTTPError as exc:
+              if exc.code != 404:
+                  raise
+              api('/repos/'+REPO+'/git/refs', 'POST', {'ref':'refs/tags/'+TAG, 'sha':SHA})
+          release = api('/repos/'+REPO+'/releases', 'POST', {
+              'tag_name':TAG, 'target_commitish':SHA,
+              'name':'Meshtastic 2.8.0 for MuziWorks Superbase — Navigation Correction',
+              'body':notes, 'draft':True, 'prerelease':False})
+          assert release['draft'] and release['target_commitish'] == SHA
+          write_json('draft-release.json', {'id':release['id'], 'tag':TAG, 'source_sha':SHA})
+          upload = release['upload_url'].split('{', 1)[0]
+          for name,path in sorted(local.items()):
+              data = path.read_bytes()
+              asset = api(upload+'?name='+urllib.parse.quote(name, safe=''), 'POST', raw=data)
+              assert asset['state'] == 'uploaded' and asset['size'] == len(data)
+              assert asset['digest'] == 'sha256:'+hashlib.sha256(data).hexdigest()
+          assets = get('/releases/'+str(release['id'])+'/assets?per_page=100')
+          assert len(assets) == 7 and {a['name'] for a in assets} == set(local)
+          for a in assets:
+              path = local[a['name']]
+              assert a['state'] == 'uploaded' and a['size'] == path.stat().st_size
+              assert a['digest'] == 'sha256:'+hashlib.sha256(path.read_bytes()).hexdigest()
+          verify_gate()
+          final = api('/repos/'+REPO+'/releases/'+str(release['id']), 'PATCH',
+                      {'draft':False, 'prerelease':False, 'make_latest':'true'})
+          assert not final['draft'] and not final['prerelease'] and final['published_at']
+          latest = get('/releases/latest')
+          assert latest['id'] == final['id'] and latest['tag_name'] == TAG
+          absent('/releases/tags/'+BAD)
+          result = {'status':'PUBLISHED', 'release_id':final['id'], 'tag':TAG, 'source_sha':SHA,
+                    'firmware_version':'2.8.0.cc704b8', 'html_url':final['html_url'],
+                    'published_at':final['published_at'], 'hardware_tested':False,
+                    'test_cases':614, 'suites':24, 'failures':0, 'errors':0, 'skipped':0,
+                    'withdrawn_release_still_absent':BAD,
+                    'assets':[{k:a[k] for k in ['name','size','digest','browser_download_url']} for a in assets]}
+          write_json('publication-result.json', result)
+          print(json.dumps(result, indent=2))
+          PY
+      - name: Retain publication confirmation and exact release files
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: superbase8-published-release
+          path: |
+            publication-result.json
+            draft-release.json
+            release-notes.md
+            release-assets/
+          if-no-files-found: error
