@@ -4,7 +4,7 @@ on:
     branches: [audit/superbase-selective-20260905]
 permissions: read-all
 concurrency:
-  group: superbase-navigation-audit
+  group: superbase-navigation-audit-v2
   cancel-in-progress: false
 jobs:
   prepare:
@@ -16,29 +16,24 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: 7c39922e028a68dbe3af7470aea8eb8d849fc569
+          ref: ca17256b820d51eb72bec3c7911ff75f25940eaa
           fetch-depth: 0
-      - name: Apply hash-verified navigation source changes
+      - name: Correct fixture against the pinned protobuf enum
         id: fix
         run: |
           set -euo pipefail
-          mkdir -p audit-evidence
-          git show aeb5201c3ddc14143f36f7dccb50cd8aa539020d:.github/workflows/superbase_integration_audit.yml > audit-evidence/transfer.yml
           python3 - <<'PY'
           from pathlib import Path
-          import re,base64,gzip,hashlib,subprocess
-          text=Path('audit-evidence/transfer.yml').read_text()
-          data=re.search(r"b64decode\('([^']+)'",text).group(1)
-          data=data.replace('RbDbDVkRu','RbDbVkRu').replace('C8ID3boB1kun','C8ID3boBkun')
-          Path('audit-evidence/transferred.b64').write_text(data)
-          patch=gzip.decompress(base64.b64decode(data))
-          assert hashlib.sha256(patch).hexdigest()=='7927c05312a2fc8d2cb62bfcb0df27f87ada95622f52c56b1d333a5c4df31bf0'
-          subprocess.run(['git','apply','--index'],input=patch,check=True)
+          p=Path('test/test_superbase_navigation/test_main.cpp')
+          s=p.read_text(); old='meshtastic_Config_DisplayConfig_OledType_AUTO'
+          assert s.count(old)==1
+          p.write_text(s.replace(old,'meshtastic_Config_DisplayConfig_OledType_OLED_AUTO'))
           PY
-          git diff --cached --check
           git config user.name Amoulier
           git config user.email 19624653+Amoulier@users.noreply.github.com
-          git commit -m 'fix(superbase): retain navigation taps and poll switches when IRQs are unavailable'
+          git add test/test_superbase_navigation/test_main.cpp
+          git diff --cached --check
+          git commit -m 'test(superbase): use correct OLED enum in navigation fixture'
           python3 bin/audit-superbase-release.py --source --output audit-evidence/source-audit.json
           git push origin HEAD:refs/heads/fix/superbase-navigation-20260905
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
