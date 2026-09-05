@@ -1,182 +1,159 @@
-name: Superbase navigation correction audit
+name: Superbase navigation final verification
 on:
   push:
     branches: [audit/superbase-selective-20260905]
 permissions: read-all
 concurrency:
-  group: superbase-navigation-audit-v2
+  group: superbase-navigation-final-verification
   cancel-in-progress: false
+
+env:
+  CANDIDATE_SHA: cc704b80956017ded590de61bf2a667eb36cc820
+  CANDIDATE_RUN: '33980553791'
+
 jobs:
-  prepare:
+  baseline:
     runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    outputs:
-      sha: ${{ steps.fix.outputs.sha }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ca17256b820d51eb72bec3c7911ff75f25940eaa
-          fetch-depth: 0
-      - name: Correct fixture against the pinned protobuf enum
-        id: fix
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('test/test_superbase_navigation/test_main.cpp')
-          s=p.read_text(); old='meshtastic_Config_DisplayConfig_OledType_AUTO'
-          assert s.count(old)==1
-          p.write_text(s.replace(old,'meshtastic_Config_DisplayConfig_OledType_OLED_AUTO'))
-          PY
-          git config user.name Amoulier
-          git config user.email 19624653+Amoulier@users.noreply.github.com
-          git add test/test_superbase_navigation/test_main.cpp
-          git diff --cached --check
-          git commit -m 'test(superbase): use correct OLED enum in navigation fixture'
-          python3 bin/audit-superbase-release.py --source --output audit-evidence/source-audit.json
-          git push origin HEAD:refs/heads/fix/superbase-navigation-20260905
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          git diff 7c39922e028a68dbe3af7470aea8eb8d849fc569 HEAD > audit-evidence/navigation.diff
-          git archive HEAD | gzip > audit-evidence/source.tar.gz
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: navigation-source
-          path: audit-evidence/
-          if-no-files-found: error
-  native-after:
-    needs: prepare
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [0, 1, 2]
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare.outputs.sha }}
-          submodules: recursive
-      - uses: ./.github/actions/setup-native
-      - name: Full corrected-source native regression tests
-        env:
-          EXPECTED_SHA: ${{ needs.prepare.outputs.sha }}
-          SHARD: ${{ matrix.shard }}
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-          sed -i 's/-DBUILD_EPOCH=$UNIX_TIME/#-DBUILD_EPOCH=$UNIX_TIME/' platformio.ini
-          python3 bin/test-superbase.py --shard "$SHARD" --shards 3
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: navigation-native-${{ matrix.shard }}
-          path: |
-            audit-evidence/
-            .pio/test-state/
-          include-hidden-files: true
-          if-no-files-found: error
-  regression-before:
-    needs: prepare
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
         with:
           ref: 7c39922e028a68dbe3af7470aea8eb8d849fc569
           submodules: recursive
       - uses: ./.github/actions/setup-native
-      - name: Reproduce failures in withdrawn driver with new test fixture only
-        env:
-          FIXED_SHA: ${{ needs.prepare.outputs.sha }}
+      - name: Build the withdrawn driver with the same navigation fixture
         run: |
           set -euo pipefail
-          git fetch origin "$FIXED_SHA"
+          git fetch origin "$CANDIDATE_SHA"
           mkdir -p test/test_superbase_navigation audit-evidence
           for path in test/test_superbase_navigation/test_main.cpp src/graphics/Screen.h test/state-manifest.tsv; do
-            git show "$FIXED_SHA:$path" > "$path"
+            git show "$CANDIDATE_SHA:$path" > "$path"
           done
           git diff --exit-code -- src/input/
           sed -i 's/-DBUILD_EPOCH=$UNIX_TIME/#-DBUILD_EPOCH=$UNIX_TIME/' platformio.ini
-          set +e
-          platformio test -e superbase-native-tests --filter test_superbase_navigation --junit-output-path audit-evidence/baseline-junit.xml > audit-evidence/baseline.log 2>&1
-          result=$?
-          set -e
-          cat audit-evidence/baseline.log
-          test "$result" != 0
+          platformio test -e superbase-native-tests --filter test_superbase_navigation --without-testing > audit-evidence/baseline-build.log 2>&1
+      - name: Verify native assertion failures without misclassifying Unity exit count as a signal
+        run: |
           python3 - <<'PY'
-          import xml.etree.ElementTree as ET, json
+          import subprocess,re,json,csv
           from pathlib import Path
-          cases=list(ET.parse('audit-evidence/baseline-junit.xml').getroot().iter('testcase'))
-          assert len(cases)==21, [(c.attrib,c.find('error') is not None) for c in cases]
-          assert not any(c.find('error') is not None or c.find('skipped') is not None for c in cases)
-          failed={c.attrib['name'] for c in cases if c.find('failure') is not None}
+          root=Path('audit-evidence')
+          process=subprocess.run(['bash','bin/pio-test-isolate.sh','.pio/build/superbase-native-tests/meshtasticd','-s'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,timeout=120)
+          log=process.stdout
+          (root/'baseline-direct.log').write_text(log)
+          print(log)
+          cases=re.findall(r'^test/test_superbase_navigation/test_main\.cpp:\d+:(test_\w+):(PASS|FAIL|IGNORE)(?::[^\n]*)?$',log,re.M)
+          assert len(cases)==21 and len({n for n,s in cases})==21, cases
+          assert not any(s=='IGNORE' for n,s in cases)
+          failed=sorted(n for n,s in cases if s=='FAIL')
           required={'test_released_left_tap','test_released_right_tap','test_right_without_interrupt','test_select_without_interrupt','test_ui_right_without_irq_changes_frame'}
-          assert required <= failed, failed
-          report={'withdrawn_source':'7c39922e028a68dbe3af7470aea8eb8d849fc569','status':'REGRESSION_REPRODUCED','cases':len(cases),'failed':sorted(failed),'hardware_tested':False}
-          Path('audit-evidence/regression-before.json').write_text(json.dumps(report,indent=2))
+          assert required <= set(failed), failed
+          assert 0 < process.returncode < 128 and process.returncode == len(failed), process.returncode
+          assert re.search(r'21 Tests '+str(len(failed))+r' Failures 0 Ignored',log)
+          for marker in ['AddressSanitizer:','UndefinedBehaviorSanitizer:','runtime error:','Segmentation fault','DEADLYSIGNAL']:
+              assert marker not in log, marker
+          rows=list(csv.reader(Path('.pio/test-state/summary.tsv').open(),delimiter='\t'))
+          assert len(rows)==1 and rows[0][0]=='test_superbase_navigation'
+          row=rows[0]
+          assert row[1]=='FAIL' and row[2]=='CLEAN' and not row[4] and not row[5] and row[6]=='WITHIN', row
+          report={'status':'EXPECTED_BASELINE_FAILURES_CONFIRMED','source_sha':'7c39922e028a68dbe3af7470aea8eb8d849fc569','test_fixture_sha':'cc704b80956017ded590de61bf2a667eb36cc820','cases':len(cases),'failed':failed,'passed':[n for n,s in cases if s=='PASS'],'native_exit_code':process.returncode,'crash_or_sanitizer_error':False,'skipped':0,'hardware_tested':False}
+          (root/'baseline-verification.json').write_text(json.dumps(report,indent=2)+'\n')
           print(json.dumps(report,indent=2))
           PY
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: navigation-regression-before
+          name: navigation-baseline-native-exit
           path: |
             audit-evidence/
             .pio/test-state/
           include-hidden-files: true
           if-no-files-found: error
-  firmware:
-    needs: prepare
+
+  verification:
+    needs: baseline
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.prepare.outputs.sha }}
-          submodules: recursive
-      - uses: meshtastic/gh-action-firmware@218dd4b473a37d7925d7cb2867ccddfba3ec2cff
-        with:
-          pio_platform: nrf52840
-          pio_env: muzi-base
-          pio_target: build
-      - name: Validate candidate packages and hardware handlers
+          ref: ${{ env.CANDIDATE_SHA }}
+          fetch-depth: 0
+      - name: Reconcile exact-source passing native and firmware evidence
         env:
-          EXPECTED_SHA: ${{ needs.prepare.outputs.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
-          git diff --exit-code
-          python3 bin/audit-superbase-release.py --packages release --sha "$EXPECTED_SHA" --output release/package-audit.json
-          mkdir -p navigation-elf
-          cp .pio/build/muzi-base/firmware-muzi-base-*.elf navigation-elf/
-          readelf -sW .pio/build/muzi-base/firmware-muzi-base-*.elf > navigation-elf/symbols.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,json,subprocess,csv,re,hashlib,xml.etree.ElementTree as ET,importlib.util
+          repo='Amoulier/meshtastic-superbase-firmware'
+          sha=os.environ['CANDIDATE_SHA'];run=os.environ['CANDIDATE_RUN']
+          root=Path('audit-evidence');root.mkdir()
+          def api(path): return json.loads(subprocess.check_output(['gh','api','repos/'+repo+path],text=True))
+          jobs=api('/actions/runs/'+run+'/jobs?per_page=100')
+          required={'prepare','firmware','native-after (0)','native-after (1)','native-after (2)'}
+          byname={j['name']:j for j in jobs['jobs']}
+          assert required <= byname.keys()
+          assert all(byname[n]['status']=='completed' and byname[n]['conclusion']=='success' for n in required)
+          (root/'candidate-jobs.json').write_text(json.dumps(jobs,indent=2)+'\n')
+          # The earlier negative-test wrapper treated Unity's positive failure-count exit code as
+          # SIGCONT. This run independently requires the direct native exit to match failed cases;
+          # the candidate's ordinary pass/fail gates are neither modified nor waived.
+          prior=api('/actions/runs/'+run)
+          assert prior['head_sha']=='cdb7f15bef99f9516fa8085ef52f8b65767b7ab8'
+          artifacts=api('/actions/runs/'+run+'/artifacts?per_page=100')['artifacts']
+          wanted={'navigation-source':'source','navigation-candidate-firmware':'firmware',**{'navigation-native-'+str(i):'native-'+str(i) for i in range(3)}}
+          for name,folder in wanted.items():
+              a=[a for a in artifacts if a['name']==name]
+              assert len(a)==1 and not a[0]['expired']
+              assert a[0]['workflow_run']['head_sha']==prior['head_sha']
+              subprocess.run(['gh','run','download',run,'--repo',repo,'--name',name,'--dir',str(root/folder)],check=True)
+          def one(folder,name):
+              found=list(folder.rglob(name));assert len(found)==1,(folder,name,found)
+              return found[0]
+          source=json.loads(one(root/'source','source-audit.json').read_text())
+          assert source['source_sha']==sha and source['source_audit']=='PASS'
+          subprocess.run(['python3','bin/audit-superbase-release.py','--source','--output',str(root/'source-repeat.json')],check=True)
+          assert source==json.loads((root/'source-repeat.json').read_text())
+          spec=importlib.util.spec_from_file_location('superbase_tests','bin/test-superbase.py')
+          tests=importlib.util.module_from_spec(spec);spec.loader.exec_module(tests)
+          available={p.name for p in Path('test').glob('test_*') if p.is_dir()}
+          expected=sorted(tests.MANDATORY | {s for s in available if re.search(r'gps|power|boot_recovery|identity|crypto|channel|rtttl',s)})
+          assert len(expected)==24
+          total=0;counts={}
+          for shard in range(3):
+              directory=root/('native-'+str(shard))
+              result=json.loads(one(directory,'result.json').read_text())
+              assigned=expected[shard::3]
+              assert result['source_sha']==sha and result['status']=='PASS' and result['suites']==assigned
+              junit=one(directory,'junit.xml')
+              subprocess.run(['python3','bin/check-test-attribution.py','--expect',' '.join(assigned),str(junit)],check=True)
+              xml=ET.parse(junit).getroot();cases=list(xml.iter('testcase'))
+              assert cases and len(cases)==result['tests']
+              assert not any(c.find(k) is not None for c in cases for k in ['failure','error','skipped'])
+              for suite in xml.iter('testsuite'):
+                  cases_in=suite.findall('testcase')
+                  if cases_in:
+                      name=suite.attrib['name'].split(':',1)[1]
+                      assert name in assigned and name not in counts
+                      counts[name]=len(cases_in)
+              rows=list(csv.reader(one(directory,'state-summary.tsv').open(),delimiter='\t'))
+              assert len(rows)==len(assigned) and {r[0] for r in rows}==set(assigned)
+              for r in rows:
+                  assert len(r)==8 and r[1]=='PASS' and r[2]=='CLEAN' and not r[4] and not r[5] and r[6]=='WITHIN',r
+              total+=len(cases)
+          assert set(counts)==set(expected) and counts['test_superbase_navigation']==21
+          packagefile=one(root/'firmware','package-audit.json')
+          subprocess.run(['python3','bin/audit-superbase-release.py','--packages',str(packagefile.parent),'--sha',sha,'--output',str(root/'package-repeat.json')],check=True)
+          package=json.loads(packagefile.read_text());assert package==json.loads((root/'package-repeat.json').read_text())
+          summary={'status':'PASS','source_sha':sha,'candidate_run':int(run),'suite_count':len(counts),'test_cases':total,'failures':0,'errors':0,'skipped':0,'suite_counts':counts,'source_audit':source,'package_audit':package,'baseline_verification_run':int(os.environ['GITHUB_RUN_ID']),'hardware_tested':False,'release_published':False,'withdrawn_release':'v2.8.0-superbase.7'}
+          (root/'FINAL_NAVIGATION_AUDIT.json').write_text(json.dumps(summary,indent=2)+'\n')
+          print(json.dumps(summary,indent=2))
+          PY
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: navigation-candidate-firmware
-          path: |
-            release/firmware-muzi-base-*.mt.json
-            release/firmware-muzi-base-*.uf2
-            release/firmware-muzi-base-*-ota.zip
-            release/package-audit.json
-            navigation-elf/
+          name: navigation-final-verification
+          path: audit-evidence/
+          include-hidden-files: true
           if-no-files-found: error
-  verification:
-    needs: [prepare, native-after, regression-before, firmware]
-    if: always()
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Require reproduced fault and passing corrected source
-        env:
-          PREPARE: ${{ needs.prepare.result }}
-          NATIVE: ${{ needs.native-after.result }}
-          BASELINE: ${{ needs.regression-before.result }}
-          FIRMWARE: ${{ needs.firmware.result }}
-        run: |
-          test "$PREPARE" = success
-          test "$NATIVE" = success
-          test "$BASELINE" = success
-          test "$FIRMWARE" = success
-          echo 'No release publication. Physical-device confirmation remains pending.' >> "$GITHUB_STEP_SUMMARY"
