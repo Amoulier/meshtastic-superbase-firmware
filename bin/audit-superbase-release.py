@@ -10,6 +10,8 @@ import subprocess
 import zipfile
 
 BASE = '4cbba7006a9fed23cb1a778b7e62422ba96ee8bc'
+INTEGRATION_BASE = 'c23e1d46ebda005cb044470977d11bb57e560195'
+POSITION_FIX = '9fe0360f4ed57aff84298c57c9323cf0d03f6d1f'
 
 
 def git(*args):
@@ -25,12 +27,23 @@ def source_audit():
     }.items():
         assert {p.name for p in Path(directory).iterdir()} == expected, directory
     preserved = ['boards', 'variants', 'protobufs', 'src/mesh/generated', 'platformio.ini',
-                 'src/motion/ICM20948Sensor.cpp', 'src/modules/PositionModule.cpp',
+                 'src/motion/ICM20948Sensor.cpp',
                  'src/mesh/ReliableRouter.cpp', 'src/mesh/Router.cpp', 'src/modules/MQTT.cpp',
                  'src/AudioThread.h', 'src/AudioThread.cpp',
                  'extra_scripts', 'version.properties', 'src/mesh/RadioInterface.cpp',
                  'src/mesh/RF95Interface.cpp', 'src/mesh/LR20x0Interface.cpp', 'src/mesh/SX128xInterface.cpp']
     assert not git('diff', BASE, '--', *preserved), 'Preserved source changed'
+    integration_paths = {'src/main.cpp', 'src/mesh/MeshService.cpp', 'src/mesh/MeshService.h',
+                         'src/modules/PositionModule.cpp', 'src/modules/PositionModule.h',
+                         'src/modules/NodeInfoModule.cpp', 'src/modules/NodeInfoModule.h',
+                         'src/modules/Telemetry/DeviceTelemetry.cpp', 'src/modules/Telemetry/DeviceTelemetry.h'}
+    changed = set(git('diff', '--name-only', INTEGRATION_BASE, '--', 'src').splitlines())
+    assert changed <= integration_paths, f'Unreviewed integration changes: {changed - integration_paths}'
+    expected_position = git('show', POSITION_FIX+':src/modules/PositionModule.cpp')+'\n'
+    expected_position = expected_position.replace('// Hold to the 6h floor when fixed_position',
+                                                  '// Hold to the platform floor when fixed_position')
+    assert Path('src/modules/PositionModule.cpp').read_text() == expected_position, 'Position differs from reviewed fix'
+    assert not git('diff', INTEGRATION_BASE, '--', 'src/mesh/Default.h'), 'Custom stationary floor changed'
     ble_paths = {'src/platform/nrf52/NRF52Bluetooth.cpp', 'src/platform/nrf52/NRF52Bluetooth.h',
                  'src/platform/nrf52/main-nrf52.cpp'}
     nrf_changes = set(git('diff', '--name-only', BASE, '--', 'src/platform/nrf52').splitlines())
@@ -58,6 +71,7 @@ def source_audit():
         pos = text.index(f'bool {backend}Interface<T>::reconfigure()')
         assert 'return !rxOffline;' in text[pos:text.index('\n}', pos)]
     return {'source_sha': git('rev-parse', 'HEAD'), 'baseline': BASE, 'preserved_paths': preserved,
+            'integration_baseline': INTEGRATION_BASE, 'integration_paths': sorted(integration_paths),
             'scope': 'muzi-base only', 'custom_notification_delta': 'mute predicate only', 'source_audit': 'PASS'}
 
 
