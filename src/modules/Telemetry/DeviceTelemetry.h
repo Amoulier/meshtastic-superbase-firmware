@@ -10,6 +10,9 @@ class DeviceTelemetryModule : private concurrency::OSThread,
                               public BaseTelemetryModule,
                               public ProtobufModule<meshtastic_Telemetry>
 {
+#ifdef PIO_UNIT_TESTING
+    friend class BroadcastTestAccess;
+#endif
     CallbackObserver<DeviceTelemetryModule, const meshtastic::Status *> nodeStatusObserver =
         CallbackObserver<DeviceTelemetryModule, const meshtastic::Status *>(this, &DeviceTelemetryModule::handleStatusUpdate);
 
