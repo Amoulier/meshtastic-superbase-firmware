@@ -203,7 +203,7 @@ static void setBluetoothEnableUnlessRestarting()
         LOG_POWERFSM("Skip BLE enable, restart pending");
         return;
     }
-    setBluetoothEnable(true);
+    setBluetoothEnable(config.bluetooth.enabled);
 }
 
 static void nbEnter()

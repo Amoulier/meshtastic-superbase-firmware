@@ -15,6 +15,7 @@
 #include "main.h"
 #include "modules/AdminModule.h"
 #include "modules/ExternalNotificationModule.h"
+#include "target_specific.h"
 
 SystemCommandsModule *systemCommandsModule;
 
@@ -56,14 +57,8 @@ int SystemCommandsModule::handleInputEvent(const InputEvent *event)
         LOG_INFO("User toggled Bluetooth");
         nodeDB->saveToDisk();
 #if defined(ARDUINO_ARCH_NRF52)
-        if (!config.bluetooth.enabled) {
-            disableBluetooth();
-            IF_SCREEN(screen->showSimpleBanner("Bluetooth OFF\nRebooting", 3000));
-            rebootAtMsec = millis() + DEFAULT_REBOOT_SECONDS * 2000;
-        } else {
-            IF_SCREEN(screen->showSimpleBanner("Bluetooth ON\nRebooting", 3000));
-            rebootAtMsec = millis() + DEFAULT_REBOOT_SECONDS * 1000;
-        }
+        setBluetoothEnable(config.bluetooth.enabled);
+        IF_SCREEN(screen->showSimpleBanner(config.bluetooth.enabled ? "Bluetooth ON" : "Bluetooth OFF", 3000));
 #else
         if (!config.bluetooth.enabled) {
             disableBluetooth();
