@@ -1,7 +1,7 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the
 // README at: https://github.com/devcontainers/templates/tree/main/src/cpp
 {
-  "name": "Meshtastic Firmware Dev",
+  "name": "MuziWorks Superbase Firmware Dev",
   "build": {
     "dockerfile": "Dockerfile"
   },
@@ -15,13 +15,12 @@
     "vscode": {
       "extensions": [
         "ms-vscode.cpptools",
-        "Jason2866.esp-decoder",
-        "pioarduino.pioarduino-ide",
+        "platformio.platformio-ide",
         "Trunk.io"
       ],
       "unwantedRecommendations": [
         "ms-azuretools.vscode-docker",
-        "platformio.platformio-ide"
+        "pioarduino.pioarduino-ide"
       ],
       "settings": {
         "extensions.ignoreRecommendations": true

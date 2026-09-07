@@ -103,8 +103,8 @@ pio run -e native && ./bin/test-simulator.sh
 # Build and run under gdbserver on localhost:2345
 ./bin/native-gdbserver.sh
 
-# Build native release artifact into ./release/
-./bin/build-native.sh native
+# Build the native environment used for Superbase regression tests
+pio run -e superbase-native-tests
 ```
 
 Notes:

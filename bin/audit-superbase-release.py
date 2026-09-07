@@ -61,6 +61,22 @@ REMOVED_TARGET_PATHS = [
     'bin/org.meshtastic.meshtasticd.desktop',
     'bin/org.meshtastic.meshtasticd.metainfo.xml',
     'bin/org.meshtastic.meshtasticd.svg',
+    'debian/',
+    'packaging/',
+    'zephyr/',
+    'bin/bump_metainfo/',
+    'alpine.Dockerfile',
+    'meshtasticd.spec.rpkg',
+    'rpkg.conf',
+    'bin/rpkg.macros',
+    'scripts/add_mbedtls_sources.py',
+    'default_16MB.csv',
+    'default_8MB.csv',
+    'partition-table-8MB.csv',
+    'partition-table-t3s3.csv',
+    'partition-table.csv',
+    'bin/build-native.sh',
+    'bin/native-run.sh',
 ]
 
 
