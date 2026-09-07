@@ -11,7 +11,7 @@ import zipfile
 
 BASE = '4cbba7006a9fed23cb1a778b7e62422ba96ee8bc'
 INTEGRATION_BASE = 'c23e1d46ebda005cb044470977d11bb57e560195'
-POSITION_FIX = '9fe0360f4ed57aff84298c57c9323cf0d03f6d1f'
+POSITION_FIX = '14be478b866a21d9a4c5cf419a9a70d78e4703bb'
 
 
 def git(*args):
@@ -40,8 +40,6 @@ def source_audit():
     changed = set(git('diff', '--name-only', INTEGRATION_BASE, '--', 'src').splitlines())
     assert changed <= integration_paths, f'Unreviewed integration changes: {changed - integration_paths}'
     expected_position = git('show', POSITION_FIX+':src/modules/PositionModule.cpp')+'\n'
-    expected_position = expected_position.replace('// Hold to the 6h floor when fixed_position',
-                                                  '// Hold to the platform floor when fixed_position')
     assert Path('src/modules/PositionModule.cpp').read_text() == expected_position, 'Position differs from reviewed fix'
     assert not git('diff', INTEGRATION_BASE, '--', 'src/mesh/Default.h'), 'Custom stationary floor changed'
     ble_paths = {'src/platform/nrf52/NRF52Bluetooth.cpp', 'src/platform/nrf52/NRF52Bluetooth.h',
