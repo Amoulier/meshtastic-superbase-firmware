@@ -22,6 +22,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--shard', type=int, default=0)
     parser.add_argument('--shards', type=int, default=1)
+    parser.add_argument('--output-dir', default='audit-evidence')
     args = parser.parse_args()
     if not 0 <= args.shard < args.shards <= 8:
         parser.error('Require 0 <= shard < shards <= 8')
@@ -31,8 +32,8 @@ def main():
     selected = sorted(MANDATORY | {s for s in available if re.search(r'gps|power|boot_recovery|identity|crypto|channel|rtttl', s)})
     assigned = selected[args.shard::args.shards]
     assert assigned, 'Empty shard'
-    evidence = pathlib.Path('audit-evidence')
-    evidence.mkdir(exist_ok=True)
+    evidence = pathlib.Path(args.output_dir)
+    evidence.mkdir(parents=True, exist_ok=True)
     (evidence / 'expected-suites.json').write_text(json.dumps(assigned, indent=2)+'\n')
     summary = pathlib.Path('.pio/test-state/summary.tsv')
     if summary.exists():

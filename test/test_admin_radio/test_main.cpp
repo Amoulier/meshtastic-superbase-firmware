@@ -2510,6 +2510,17 @@ static void test_presetForRegionSelection_ignoresNodesOnRawModemSettings()
 // Test runner
 // -----------------------------------------------------------------------
 
+static void test_bluetooth_enabled_persists_across_reload()
+{
+    for (bool enabled : {false, true, false, true}) {
+        config.bluetooth.enabled = enabled;
+        TEST_ASSERT_TRUE(nodeDB->saveToDisk());
+        config.bluetooth.enabled = !enabled;
+        TEST_ASSERT_TRUE(nodeDB->reloadFromDisk());
+        TEST_ASSERT_EQUAL(enabled, config.bluetooth.enabled);
+    }
+}
+
 void setUp(void)
 {
     mockMeshService = new MockMeshService();
@@ -2537,6 +2548,7 @@ void setup()
     initializeTestEnvironment();
 
     UNITY_BEGIN();
+    RUN_TEST(test_bluetooth_enabled_persists_across_reload);
 
     // getRegion()
     RUN_TEST(test_handleSetOwner_persistsLicensedChannelSanitation);

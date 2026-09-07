@@ -108,6 +108,8 @@ jobs:
 
       - name: Audit preserved behavior and selective source delta
         run: python3 bin/audit-superbase-release.py --source --output audit-evidence/source-audit.json
+      - name: Test nRF52 runtime Bluetooth lifecycle with sanitizers
+        run: python3 bin/test-nrf52-bluetooth.py
       - uses: actions/upload-artifact@v7
         with:
           name: superbase-source-audit

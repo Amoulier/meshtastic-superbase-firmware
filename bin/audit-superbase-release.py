@@ -27,10 +27,18 @@ def source_audit():
     preserved = ['boards', 'variants', 'protobufs', 'src/mesh/generated', 'platformio.ini',
                  'src/motion/ICM20948Sensor.cpp', 'src/modules/PositionModule.cpp',
                  'src/mesh/ReliableRouter.cpp', 'src/mesh/Router.cpp', 'src/modules/MQTT.cpp',
-                 'src/AudioThread.h', 'src/AudioThread.cpp', 'src/PowerFSM.cpp', 'src/platform/nrf52',
+                 'src/AudioThread.h', 'src/AudioThread.cpp',
                  'extra_scripts', 'version.properties', 'src/mesh/RadioInterface.cpp',
                  'src/mesh/RF95Interface.cpp', 'src/mesh/LR20x0Interface.cpp', 'src/mesh/SX128xInterface.cpp']
-    assert not git('diff', BASE, 'HEAD', '--', *preserved), 'Preserved source changed'
+    assert not git('diff', BASE, '--', *preserved), 'Preserved source changed'
+    ble_paths = {'src/platform/nrf52/NRF52Bluetooth.cpp', 'src/platform/nrf52/NRF52Bluetooth.h',
+                 'src/platform/nrf52/main-nrf52.cpp'}
+    nrf_changes = set(git('diff', '--name-only', BASE, '--', 'src/platform/nrf52').splitlines())
+    assert nrf_changes <= ble_paths, f'Unreviewed nRF52 changes: {nrf_changes - ble_paths}'
+    original_fsm = git('show', BASE+':src/PowerFSM.cpp')+'\n'
+    expected_fsm = original_fsm.replace('    setBluetoothEnable(true);',
+                                        '    setBluetoothEnable(config.bluetooth.enabled);', 1)
+    assert Path('src/PowerFSM.cpp').read_text() == expected_fsm, 'Unreviewed power-state change'
     subprocess.run(['git', 'diff', '--check', BASE, 'HEAD'], check=True)
     conflict = subprocess.run(['git', 'grep', '-n', '-E', '^(<<<<<<<|>>>>>>>)', '--', ':!*.md'], capture_output=True, text=True)
     assert conflict.returncode == 1, conflict.stdout
