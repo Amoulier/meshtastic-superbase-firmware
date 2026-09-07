@@ -8,15 +8,9 @@ This fork is intentionally scoped to the Superbase. Hardware definitions, board 
 
 ## Release status
 
-**[v2.8.0-superbase.8 — Navigation Correction](https://github.com/Amoulier/meshtastic-superbase-firmware/releases/tag/v2.8.0-superbase.8)** is the latest published final release. Runtime firmware version: **`2.8.0.cc704b8`**. The release tag points to the exact compiled and tested source, `cc704b80956017ded590de61bf2a667eb36cc820`; later commits update documentation only.
+The **[latest published release](https://github.com/Amoulier/meshtastic-superbase-firmware/releases/latest)** contains the current install packages, firmware version, source provenance, SHA-256 checksums and validation results. Consult its release notes for completed physical checks and checks not repeated on that candidate.
 
-The release contains the identical OTA and UF2 files previously supplied as the navigation candidate. They were not rebuilt or substituted for publication. A node already running `2.8.0.cc704b8` does not need reflashing solely because the release tag changed.
-
-The corrected candidate passed **614 cases in 24 native suites**, with zero failures, errors or skipped cases. Its 21 navigation cases all passed. Source, test attribution, state isolation, package integrity and uploaded-asset SHA-256 checks were reconciled again before publication. Final verification: [33981068477](https://github.com/Amoulier/meshtastic-superbase-firmware/actions/runs/33981068477). Publication: [33981982943](https://github.com/Amoulier/meshtastic-superbase-firmware/actions/runs/33981982943).
-
-**Physical-device navigation confirmation remains pending.** The release was published at the repository owner's explicit request after automated verification; final release status does not assert that the owner's hardware symptom has been confirmed repaired. No automated build should be described as verified on the user's hardware.
-
-See `docs/SUPERBASE_NAVIGATION_AUDIT.md` and the historical pre-publication report `docs/SUPERBASE_NAVIGATION_RESULTS.md` for the findings, changed paths and validation limits. Their earlier candidate/release-status statements are superseded by the publication above, not their physical-validation limits. The correction retains short button taps, polls switches when an IRQ is not delivered, and adds regression tests through the actual input broker and BaseUI handler. Board GPIO assignments are unchanged.
+Reports under `docs/` are historical records; use the release notes for current installation and validation status.
 
 ## Selective reliability changes retained in source
 
@@ -61,7 +55,7 @@ The Superbase CI checks repository scope, runs native suites and builds a fresh 
 
 Back up configuration before any firmware change. A navigation correction does **not** require a factory reset, changed board pins or regenerated identity keys.
 
-For a Superbase with the MuziWorks OTAFIX bootloader, use `firmware-muzi-base-2.8.0.cc704b8-ota.zip` **without extracting it**. For USB/UF2, copy `firmware-muzi-base-2.8.0.cc704b8.uf2` to the bootloader drive. A bundle or audit ZIP is not itself an OTA package. Do not use .7 files retained from the withdrawn release.
+Download packages from the [latest published release](https://github.com/Amoulier/meshtastic-superbase-firmware/releases/latest). For a Superbase with the MuziWorks OTAFIX bootloader, use its `firmware-muzi-base-<version>-ota.zip` **without extracting it**. For USB/UF2, copy its `firmware-muzi-base-<version>.uf2` to the bootloader drive. A bundle or audit ZIP is not itself an OTA package. Do not use .7 files retained from the withdrawn release.
 
 ## Upstream
 
