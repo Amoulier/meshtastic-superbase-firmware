@@ -75,4 +75,4 @@ test_traffic_management	writes=config.proto,module.proto,device.proto,channels.p
 test_transmit_history	writes=transmit_history.dat	persistence round-trip: what it asserts is that retransmission state survives a save/load
 test_warm_store	writes=warm.dat	persistence round-trip of the warm-tier snapshot, which is the tier's whole contract
 test_superbase_navigation	writes=config.proto,module.proto,device.proto,channels.proto,nodes.proto	constructs a NodeDB for production BaseUI menu and physical-input regression tests
-test_superbase_broadcasts	writes=config.proto,module.proto,device.proto,channels.proto,nodes.proto errors=30	exercises real broadcast modules with rejected sends, persisted cadence and noise statistics
+test_superbase_broadcasts	writes=config.proto,module.proto,device.proto,channels.proto,nodes.proto,warm.dat errors=30	exercises real broadcast modules with rejected sends and clock rollover; initializes the warm snapshot that NodeDB persistence can flush

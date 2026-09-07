@@ -131,6 +131,9 @@ void setUp()
     savedGeneration = radioGeneration;
     savedRegion = myRegion;
     nodeDB = new NodeDB();
+    // Rollover can trigger NodeDB persistence; initialize its warm snapshot deterministically.
+    nodeDB->warmStore.clear();
+    TEST_ASSERT_TRUE(nodeDB->warmStore.saveIfDirty());
     config = meshtastic_LocalConfig_init_zero;
     config.device.role = meshtastic_Config_DeviceConfig_Role_CLIENT;
     config.lora.override_duty_cycle = true;
