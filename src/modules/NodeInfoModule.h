@@ -7,6 +7,9 @@
  */
 class NodeInfoModule : public ProtobufModule<meshtastic_User>, private concurrency::OSThread
 {
+#ifdef PIO_UNIT_TESTING
+    friend class BroadcastTestAccess;
+#endif
     /// The id of the last packet we sent, to allow us to cancel it if we make something fresher
     PacketId prevPacketId = 0;
 
@@ -19,9 +22,9 @@ class NodeInfoModule : public ProtobufModule<meshtastic_User>, private concurren
     NodeInfoModule();
 
     /**
-     * Send our NodeInfo into the mesh
+     * Send our NodeInfo into the mesh. True only when a packet was handed to the router.
      */
-    void sendOurNodeInfo(NodeNum dest = NODENUM_BROADCAST, bool wantReplies = false, uint8_t channel = 0,
+    bool sendOurNodeInfo(NodeNum dest = NODENUM_BROADCAST, bool wantReplies = false, uint8_t channel = 0,
                          bool _shorterTimeout = false);
 
     /**
@@ -48,6 +51,7 @@ class NodeInfoModule : public ProtobufModule<meshtastic_User>, private concurren
     virtual int32_t runOnce() override;
 
   private:
+    meshtastic_MeshPacket *allocNodeInfo(bool recordHistory);
     bool shorterTimeout = false;
     bool suppressReplyForCurrentRequest = false;
     /// Sender -> uptime seconds (Time::getUptimeSecs()) at our last reply. Seconds, not millis:

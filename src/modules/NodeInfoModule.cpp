@@ -95,14 +95,15 @@ void NodeInfoModule::alterReceivedProtobuf(meshtastic_MeshPacket &mp, meshtastic
         pb_encode_to_bytes(mp.decoded.payload.bytes, sizeof(mp.decoded.payload.bytes), &meshtastic_User_msg, p);
 }
 
-void NodeInfoModule::sendOurNodeInfo(NodeNum dest, bool wantReplies, uint8_t channel, bool _shorterTimeout)
+bool NodeInfoModule::sendOurNodeInfo(NodeNum dest, bool wantReplies, uint8_t channel, bool _shorterTimeout)
 {
     // cancel any not yet sent (now stale) position packets
     if (prevPacketId) // if we wrap around to zero, we'll simply fail to cancel in that rare case (no big deal)
         service->cancelSending(prevPacketId);
     shorterTimeout = _shorterTimeout;
     DEBUG_HEAP_BEFORE;
-    meshtastic_MeshPacket *p = allocReply();
+    meshtastic_MeshPacket *p = allocNodeInfo(false);
+    shorterTimeout = false;
     DEBUG_HEAP_AFTER("NodeInfoModule::sendOurNodeInfo", p);
 
     if (p) { // Check whether we didn't ignore it
@@ -123,9 +124,14 @@ void NodeInfoModule::sendOurNodeInfo(NodeNum dest, bool wantReplies, uint8_t cha
 
         prevPacketId = p->id;
 
-        service->sendToMesh(p);
-        shorterTimeout = false;
+        ErrorCode res = service->sendToMesh(p);
+        if (res != ERRNO_OK && res != ERRNO_SHOULD_RELEASE)
+            return false;
+        if (transmitHistory)
+            transmitHistory->setLastSentToMesh(meshtastic_PortNum_NODEINFO_APP);
+        return true;
     }
+    return false;
 }
 
 void NodeInfoModule::triggerImmediateNodeInfoCheck()
@@ -135,6 +141,11 @@ void NodeInfoModule::triggerImmediateNodeInfoCheck()
 }
 
 meshtastic_MeshPacket *NodeInfoModule::allocReply()
+{
+    return allocNodeInfo(true);
+}
+
+meshtastic_MeshPacket *NodeInfoModule::allocNodeInfo(bool recordHistory)
 {
     // Only apply suppression when actually replying to someone else's request, not for periodic broadcasts.
     const bool isReplyingToExternalRequest = currentRequest &&
@@ -178,7 +189,7 @@ meshtastic_MeshPacket *NodeInfoModule::allocReply()
         strcpy(u.id, nodeDB->getNodeId().c_str());
 
         LOG_INFO("Send owner %s/%s/%s", u.id, u.long_name, u.short_name);
-        if (transmitHistory)
+        if (recordHistory && transmitHistory)
             transmitHistory->setLastSentToMesh(meshtastic_PortNum_NODEINFO_APP);
         return allocDataProtobuf(u);
     }
@@ -225,13 +236,12 @@ NodeInfoModule::NodeInfoModule()
 
 int32_t NodeInfoModule::runOnce()
 {
-    // If we changed channels, ask everyone else for their latest info
-    bool requestReplies = currentGeneration != radioGeneration;
-    currentGeneration = radioGeneration;
-
     if (airTime->isTxAllowedAirUtil() && config.device.role != meshtastic_Config_DeviceConfig_Role_CLIENT_HIDDEN) {
+        // If we changed channels, ask everyone else for their latest info
+        bool requestReplies = currentGeneration != radioGeneration;
         LOG_INFO("Send our nodeinfo to mesh (wantReplies=%d)", requestReplies);
-        sendOurNodeInfo(NODENUM_BROADCAST, requestReplies); // Send our info (don't request replies)
+        if (sendOurNodeInfo(NODENUM_BROADCAST, requestReplies))
+            currentGeneration = radioGeneration; // only a send that went out consumes the channel change
     }
     return Default::getConfiguredOrDefaultMs(config.device.node_info_broadcast_secs, default_node_info_broadcast_secs);
 }
