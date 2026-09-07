@@ -2,6 +2,11 @@
 
 set -e
 
+if [[ ${1:-} != muzi-base ]]; then
+  echo "Only muzi-base is supported" >&2
+  exit 1
+fi
+
 VERSION=$(bin/buildinfo.py long)
 SHORT_VERSION=$(bin/buildinfo.py short)
 
@@ -32,21 +37,6 @@ cp $BUILDDIR/$basename.zip $OUTDIR/$ota_basename.zip
 
 echo "Copying NRF52 UF2 file"
 cp $BUILDDIR/$basename.uf2 $OUTDIR/$basename.uf2
-cp bin/*.uf2 $OUTDIR/
-
-SRCHEX=$BUILDDIR/$basename.hex
-
-# if WM1110 target, copy the merged.hex
-if (echo $1 | grep -q "wio-sdk-wm1110"); then
-	echo "Copying .merged.hex file"
-	SRCHEX=$BUILDDIR/$basename.merged.hex
-	cp $SRCHEX $OUTDIR/
-fi
-
-if (echo $1 | grep -q "rak4631"); then
-	echo "Copying .hex file"
-	cp $SRCHEX $OUTDIR/
-fi
 
 echo "Copying manifest"
 cp $BUILDDIR/$basename.mt.json $OUTDIR/$basename.mt.json || true

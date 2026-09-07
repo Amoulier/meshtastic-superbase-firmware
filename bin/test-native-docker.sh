@@ -33,9 +33,9 @@ sed_cmd='s/-DBUILD_EPOCH=$UNIX_TIME/#-DBUILD_EPOCH=$UNIX_TIME/'
 
 # Default: run all tests. Pass extra args (e.g. -f test_transmit_history) through.
 if [[ ${#EXTRA_ARGS[@]} -eq 0 ]]; then
-    CMD=("platformio" "test" "-e" "coverage" "-v")
+    CMD=("python3" "bin/test-superbase.py")
 else
-    CMD=("platformio" "test" "-e" "coverage" "-v" "${EXTRA_ARGS[@]}")
+    CMD=("platformio" "test" "-e" "superbase-native-tests" "-v" "${EXTRA_ARGS[@]}")
 fi
 
 exec docker run --rm \

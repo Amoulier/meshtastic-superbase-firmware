@@ -12,6 +12,56 @@ import zipfile
 BASE = '4cbba7006a9fed23cb1a778b7e62422ba96ee8bc'
 INTEGRATION_BASE = 'c23e1d46ebda005cb044470977d11bb57e560195'
 POSITION_FIX = '14be478b866a21d9a4c5cf419a9a70d78e4703bb'
+REMOVED_TARGET_PATHS = [
+    'src/platform/esp32/',
+    'src/platform/extra_variants/',
+    'src/platform/nrf54l15/',
+    'src/platform/rp2xx0/',
+    'src/platform/stm32wl/',
+    'src/modules/esp32/',
+    'bin/config.d/',
+    '.github/actions/build-variant/',
+    '.github/ISSUE_TEMPLATE/New Board.yml',
+    '.github/prompts/new-variant.prompt.md',
+    'src/input/TDeckProKeyboard.cpp',
+    'src/input/TDeckProKeyboard.h',
+    'src/input/TLoraPagerKeyboard.cpp',
+    'src/input/TLoraPagerKeyboard.h',
+    'src/mesh/STM32WLE5JCInterface.cpp',
+    'src/mesh/STM32WLE5JCInterface.h',
+    'extra_scripts/esp32_extra.py',
+    'extra_scripts/esp32_pre.py',
+    'extra_scripts/stm32_extra.py',
+    'extra_scripts/nrf54l15_linker.py',
+    'extra_scripts/wasm_link_flags.py',
+    'extra_scripts/windows_link_flags.py',
+    'bin/build-esp32.sh',
+    'bin/build-rp2xx0.sh',
+    'bin/build-stm32wl.sh',
+    'bin/lilygo_techo_bootloader-0.6.1.zip',
+    'bin/update-lilygo_techo_bootloader-0.6.1_nosd.uf2',
+    'bin/wio_tracker_bootloader_update.bin',
+    'bin/setup-python-for-esp-debug.sh',
+    'bin/eth-ota-upload.py',
+    'bin/genpartitions.py',
+    'bin/device-install.bat',
+    'bin/device-install.sh',
+    'bin/device-install_test.ps1',
+    'bin/device-update.bat',
+    'bin/device-update.sh',
+    'Dockerfile',
+    'docker-compose.yml',
+    '.env.example',
+    'bin/config-dist.yaml',
+    'bin/99-meshtasticd-udev.rules',
+    'bin/meshtasticd-start.sh',
+    'bin/meshtasticd.service',
+    'bin/native-install.sh',
+    'bin/build-winget-package.ps1',
+    'bin/org.meshtastic.meshtasticd.desktop',
+    'bin/org.meshtastic.meshtasticd.metainfo.xml',
+    'bin/org.meshtastic.meshtasticd.svg',
+]
 
 
 def git(*args):
@@ -32,12 +82,21 @@ def source_audit():
                  'src/AudioThread.h', 'src/AudioThread.cpp',
                  'extra_scripts', 'version.properties', 'src/mesh/RadioInterface.cpp',
                  'src/mesh/RF95Interface.cpp', 'src/mesh/LR20x0Interface.cpp', 'src/mesh/SX128xInterface.cpp']
-    assert not git('diff', BASE, '--', *preserved), 'Preserved source changed'
+    removed_specs = [':(exclude)' + path.rstrip('/') for path in REMOVED_TARGET_PATHS]
+    reintroduced = [path for path in REMOVED_TARGET_PATHS if Path(path).is_file() or
+                    (Path(path).is_dir() and any(p.is_file() for p in Path(path).rglob('*')))]
+    assert not reintroduced, f'Unsupported target files reintroduced: {reintroduced}'
+    platforms = {p.name for p in Path('src/platform').iterdir() if p.is_dir() and any(f.is_file() for f in p.rglob('*'))}
+    assert platforms == {'nrf52', 'portduino'}, f'Unsupported platform sources: {platforms}'
+    assert not git('diff', BASE, '--', *preserved, ':(exclude)platformio.ini', *removed_specs), 'Preserved source changed'
+    expected_platformio = git('show', BASE + ':platformio.ini') + '\n'
+    expected_platformio = expected_platformio.replace('\tpost:extra_scripts/nrf54l15_linker.py\n', '').replace(' +<platform/extra_variants/>', '')
+    assert Path('platformio.ini').read_text() == expected_platformio, 'Unreviewed build configuration change'
     integration_paths = {'src/main.cpp', 'src/mesh/MeshService.cpp', 'src/mesh/MeshService.h',
                          'src/modules/PositionModule.cpp', 'src/modules/PositionModule.h',
                          'src/modules/NodeInfoModule.cpp', 'src/modules/NodeInfoModule.h',
                          'src/modules/Telemetry/DeviceTelemetry.cpp', 'src/modules/Telemetry/DeviceTelemetry.h'}
-    changed = set(git('diff', '--name-only', INTEGRATION_BASE, '--', 'src').splitlines())
+    changed = set(git('diff', '--name-only', INTEGRATION_BASE, '--', 'src', *removed_specs).splitlines())
     assert changed <= integration_paths, f'Unreviewed integration changes: {changed - integration_paths}'
     expected_position = git('show', POSITION_FIX+':src/modules/PositionModule.cpp')+'\n'
     assert Path('src/modules/PositionModule.cpp').read_text() == expected_position, 'Position differs from reviewed fix'
@@ -70,7 +129,9 @@ def source_audit():
         assert 'return !rxOffline;' in text[pos:text.index('\n}', pos)]
     return {'source_sha': git('rev-parse', 'HEAD'), 'baseline': BASE, 'preserved_paths': preserved,
             'integration_baseline': INTEGRATION_BASE, 'integration_paths': sorted(integration_paths),
-            'scope': 'muzi-base only', 'custom_notification_delta': 'mute predicate only', 'source_audit': 'PASS'}
+            'scope': 'muzi-base only', 'custom_notification_delta': 'mute predicate only', 'source_audit': 'PASS',
+            'removed_unsupported_paths': REMOVED_TARGET_PATHS,
+            'build_config_delta': 'Remove unused nRF54 linker hook and extra board-variant source filter'}
 
 
 def package_audit(directory, sha):

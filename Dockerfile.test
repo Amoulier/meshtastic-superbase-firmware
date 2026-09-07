@@ -23,4 +23,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 USER meshtastic
 
 # Run tests by default; override with docker run args for specific filters
-CMD ["platformio", "test", "-e", "coverage", "-v"]
+CMD ["python3", "bin/test-superbase.py"]
