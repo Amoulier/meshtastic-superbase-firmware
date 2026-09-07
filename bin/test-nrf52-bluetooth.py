@@ -49,7 +49,7 @@ def main():
         for power in [None, 4]:
             binary = Path(directory) / ('test-default' if power is None else 'test-power')
             command = [os.environ.get('CXX', 'g++'), '-std=c++17', '-Wall', '-Wextra', '-Werror',
-                       '-Wno-unused-parameter', '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
+                       '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
                        str(cpp), '-o', str(binary)]
             if power is not None:
                 command += ['-DNRF52_BLE_TX_POWER=4']

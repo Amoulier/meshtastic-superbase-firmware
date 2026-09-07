@@ -2516,7 +2516,10 @@ static void test_bluetooth_enabled_persists_across_reload()
         config.bluetooth.enabled = enabled;
         TEST_ASSERT_TRUE(nodeDB->saveToDisk());
         config.bluetooth.enabled = !enabled;
-        TEST_ASSERT_TRUE(nodeDB->reloadFromDisk());
+        nodeDB = savedNodeDB;
+        delete replacementNodeDB;
+        replacementNodeDB = new NodeDB();
+        nodeDB = replacementNodeDB;
         TEST_ASSERT_EQUAL(enabled, config.bluetooth.enabled);
     }
 }
