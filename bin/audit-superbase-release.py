@@ -12,6 +12,21 @@ import zipfile
 BASE = '4cbba7006a9fed23cb1a778b7e62422ba96ee8bc'
 INTEGRATION_BASE = 'c23e1d46ebda005cb044470977d11bb57e560195'
 POSITION_FIX = '14be478b866a21d9a4c5cf419a9a70d78e4703bb'
+REVIEWED_UPSTREAM_COMMITS = [
+    '73c41105282e3f6245714efbaad2e061f7bfa821',
+    '382980637b1a91cb9f493c8e62b682f5981aa166',
+    '42d32fcea60f2804f2fb143276e383f0fce522c8',
+]
+REVIEWED_UPSTREAM_SOURCES = {
+    'src/mesh/MeshService.cpp': '3f3b41cfc68321ea3aeefb0ca7a1bbf02a00c3082c5f039bc03e869c120861d2',
+    'src/mesh/MeshService.h': '009840d4a5a54d7359aeb59482b1bd4571f2ae1653c0f568ce1ef6f071d4d7fb',
+    'src/mesh/NodeDB.cpp': 'ce9b4b9a8285f7e582ff20a1743c58afb57c16fbb7d9484ae18e3d3138f65d6c',
+    'src/mesh/NodeDBLegacyMigration.cpp': 'a2f2fc29ad90285ca41addb0d6cd8c63bddf8c5f2ae7e97e0f989e4f4035e0f3',
+    'src/mesh/PhoneAPI.cpp': '0565888591a013b3e4ad41094028216103eca95d1bf22ee4e4a524b2fac3dd50',
+    'src/mesh/PhoneAPI.h': '11ed8f8fbbea9f4a39300a05ef28ab97abb00af0dc786471904cdeecf569775d',
+    'src/mesh/RadioInterface.cpp': '236520cc6b86b83a50bc59129636a8b38b3d68d581131d7eccff6efbccea168d',
+    'test/test_phone_api_config_dump/test_main.cpp': 'e1577346dd904ce04aab994c0d7b0c05d6e9ad90c50cb02d4f4b887551263c73',
+}
 REMOVED_TARGET_PATHS = [
     'src/platform/esp32/',
     'src/platform/extra_variants/',
@@ -104,7 +119,11 @@ def source_audit():
     assert not reintroduced, f'Unsupported target files reintroduced: {reintroduced}'
     platforms = {p.name for p in Path('src/platform').iterdir() if p.is_dir() and any(f.is_file() for f in p.rglob('*'))}
     assert platforms == {'nrf52', 'portduino'}, f'Unsupported platform sources: {platforms}'
-    assert not git('diff', BASE, '--', *preserved, ':(exclude)platformio.ini', *removed_specs), 'Preserved source changed'
+    reviewed_specs = [':(exclude)' + path for path in REVIEWED_UPSTREAM_SOURCES]
+    assert not git('diff', BASE, '--', *preserved, ':(exclude)platformio.ini', *removed_specs, *reviewed_specs), 'Preserved source changed'
+    for path, expected_hash in REVIEWED_UPSTREAM_SOURCES.items():
+        actual_hash = hashlib.sha256(Path(path).read_text(encoding='utf-8').encode('utf-8')).hexdigest()
+        assert actual_hash == expected_hash, f'Reviewed upstream integration changed: {path}'
     expected_platformio = git('show', BASE + ':platformio.ini') + '\n'
     expected_platformio = expected_platformio.replace('\tpost:extra_scripts/nrf54l15_linker.py\n', '').replace(' +<platform/extra_variants/>', '')
     assert Path('platformio.ini').read_text() == expected_platformio, 'Unreviewed build configuration change'
@@ -112,6 +131,7 @@ def source_audit():
                          'src/modules/PositionModule.cpp', 'src/modules/PositionModule.h',
                          'src/modules/NodeInfoModule.cpp', 'src/modules/NodeInfoModule.h',
                          'src/modules/Telemetry/DeviceTelemetry.cpp', 'src/modules/Telemetry/DeviceTelemetry.h'}
+    integration_paths |= {path for path in REVIEWED_UPSTREAM_SOURCES if path.startswith('src/')}
     changed = set(git('diff', '--name-only', INTEGRATION_BASE, '--', 'src', *removed_specs).splitlines())
     assert changed <= integration_paths, f'Unreviewed integration changes: {changed - integration_paths}'
     expected_position = git('show', POSITION_FIX+':src/modules/PositionModule.cpp')+'\n'
@@ -146,6 +166,8 @@ def source_audit():
     return {'source_sha': git('rev-parse', 'HEAD'), 'baseline': BASE, 'preserved_paths': preserved,
             'integration_baseline': INTEGRATION_BASE, 'integration_paths': sorted(integration_paths),
             'scope': 'muzi-base only', 'custom_notification_delta': 'mute predicate only', 'source_audit': 'PASS',
+            'reviewed_upstream_commits': REVIEWED_UPSTREAM_COMMITS,
+            'reviewed_upstream_sources': REVIEWED_UPSTREAM_SOURCES,
             'removed_unsupported_paths': REMOVED_TARGET_PATHS,
             'build_config_delta': 'Remove unused nRF54 linker hook and extra board-variant source filter'}
 
