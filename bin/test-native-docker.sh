@@ -2,7 +2,7 @@
 # Run native PlatformIO tests inside Docker (for macOS / non-Linux hosts).
 #
 # Usage:
-#   ./bin/test-native-docker.sh                          # run all native tests
+#   ./bin/test-native-docker.sh                          # run critical Superbase native suites
 #   ./bin/test-native-docker.sh -f test_transmit_history  # run specific test filter
 #   ./bin/test-native-docker.sh --rebuild                 # force rebuild the image
 #
@@ -31,7 +31,7 @@ fi
 # Disable BUILD_EPOCH to avoid full rebuilds between test runs (matches CI)
 sed_cmd='s/-DBUILD_EPOCH=$UNIX_TIME/#-DBUILD_EPOCH=$UNIX_TIME/'
 
-# Default: run all tests. Pass extra args (e.g. -f test_transmit_history) through.
+# Default: run critical Superbase suites. Pass extra args (e.g. -f test_transmit_history) through.
 if [[ ${#EXTRA_ARGS[@]} -eq 0 ]]; then
     CMD=("python3" "bin/test-superbase.py")
 else

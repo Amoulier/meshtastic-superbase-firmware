@@ -35,6 +35,15 @@ REVIEWED_POWER_SOURCES = {
     'variants/nrf52840/muzi_base/variant.cpp': 'e77169c30aa386d485a457c422a9c9050c4940c9c2e159f7ba74d4d76175dc37',
     'test/test_power_status/test_main.cpp': '26cdd6c5fcf117d03329521bf120bdbb2d62b07272207d9f9490bf2ef3c5dae3',
 }
+REVIEWED_RELEASE_SOURCES = {
+    'src/mesh/RadioLibInterface.cpp': '49236f60fd390321e9904ebc296eca9473be97c8d1ced8f67f14feceea0322dd',
+    'src/modules/ExternalNotificationModule.cpp': 'd6b3dc7dc6fa61253f5ccad43f830368443dd2f51d1b65498acf8b472ba7d2b7',
+    'src/modules/ExternalNotificationModule.h': '305d1e4a23009d2bda684675db240b45359b49cf51f15b6b5a4657b1af3f9fac',
+    'test/test_buzzer_mode/test_main.cpp': 'f9f75aab8989ec256616b92a3759a73ef49f25a8b27f232c46431589c03888e2',
+    'test/test_superbase_radio_recovery/test_main.cpp': 'd4ac056cf75b3f0420112bd5dc817836b6b6344dc2140f72577b699d8fe19bf0',
+    'src/mesh/Channels.cpp': '59cfad49b392ecc70b6d0d4c34b13fe49ddda36c826b94e2072f2a1b97f919f0',
+    'test/test_muted_source/test_main.cpp': 'cfe7a16b0fec75b3a66f19f31d41a5a097f71a7c91f0a865e61d11a585b2cf71',
+}
 REMOVED_TARGET_PATHS = [
     'src/platform/esp32/',
     'src/platform/extra_variants/',
@@ -117,17 +126,18 @@ def source_audit():
         assert {p.name for p in Path(directory).iterdir()} == expected, directory
     preserved = ['boards', 'variants', 'protobufs', 'src/mesh/generated', 'platformio.ini',
                  'src/motion/ICM20948Sensor.cpp',
-                 'src/mesh/ReliableRouter.cpp', 'src/mesh/Router.cpp', 'src/modules/MQTT.cpp',
-                 'src/AudioThread.h', 'src/AudioThread.cpp',
+                 'src/mesh/ReliableRouter.cpp', 'src/mesh/Router.cpp', 'src/mqtt/MQTT.cpp',
+                 'src/AudioThread.h',
                  'extra_scripts', 'version.properties', 'src/mesh/RadioInterface.cpp',
                  'src/mesh/RF95Interface.cpp', 'src/mesh/LR20x0Interface.cpp', 'src/mesh/SX128xInterface.cpp']
+    assert all(Path(path).exists() for path in preserved), 'Missing preserved source path'
     removed_specs = [':(exclude)' + path.rstrip('/') for path in REMOVED_TARGET_PATHS]
     reintroduced = [path for path in REMOVED_TARGET_PATHS if Path(path).is_file() or
                     (Path(path).is_dir() and any(p.is_file() for p in Path(path).rglob('*')))]
     assert not reintroduced, f'Unsupported target files reintroduced: {reintroduced}'
     platforms = {p.name for p in Path('src/platform').iterdir() if p.is_dir() and any(f.is_file() for f in p.rglob('*'))}
     assert platforms == {'nrf52', 'portduino'}, f'Unsupported platform sources: {platforms}'
-    reviewed_sources = {**REVIEWED_UPSTREAM_SOURCES, **REVIEWED_POWER_SOURCES}
+    reviewed_sources = {**REVIEWED_UPSTREAM_SOURCES, **REVIEWED_POWER_SOURCES, **REVIEWED_RELEASE_SOURCES}
     reviewed_specs = [':(exclude)' + path for path in reviewed_sources]
     assert not git('diff', BASE, '--', *preserved, ':(exclude)platformio.ini', *removed_specs, *reviewed_specs), 'Preserved source changed'
     for path, expected_hash in reviewed_sources.items():
@@ -164,7 +174,28 @@ def source_audit():
     end = original.index(end_marker, start) + len(end_marker)
     expected = original[:start]+'            const bool isDmToUs = !isBroadcast(mp.to) && isToUs(&mp);\n            const bool is_muted = isMutedForPacket(mp);'+original[end:]
     expected = expected.replace('#include "ExternalNotificationModule.h"', '#include "ExternalNotificationModule.h"\n#include "Channels.h"', 1)
-    assert current == expected, 'Custom buzzer/RTTTL code changed beyond mute integration'
+    unformatted_delay = ('                                    : (moduleConfig.external_notification.output_ms\n'
+                         '                                           ? moduleConfig.external_notification.output_ms\n'
+                         '                                           : EXT_NOTIFICATION_MODULE_OUTPUT_MS);')
+    formatted_delay = ('                                    : (moduleConfig.external_notification.output_ms ? moduleConfig.external_notification.output_ms\n'
+                       '                                                                                    : EXT_NOTIFICATION_MODULE_OUTPUT_MS);')
+    assert expected.count(unformatted_delay) == 2
+    expected = expected.replace(unformatted_delay, formatted_delay)
+    for before, after in [
+        ('if (Throttle::hasElapsed(externalTurnedOn[0], delay))', 'if (genericAlertActive && Throttle::hasElapsed(externalTurnedOn[0], delay))'),
+        ('if (Throttle::hasElapsed(externalTurnedOn[1], delay))', 'if (vibraAlertActive && Throttle::hasElapsed(externalTurnedOn[1], delay))'),
+        ('if (moduleConfig.external_notification.alert_message_vibra || moduleConfig.external_notification.alert_bell_vibra)', 'if (vibraAlertActive)'),
+        ('    stopBuzzerNow();\n    // Turn off all outputs', '    stopBuzzerNow();\n    genericAlertActive = false;\n    vibraAlertActive = false;\n    // Turn off all outputs'),
+        ('                setExternalState(0, true);', '                genericAlertActive = true;\n                setExternalState(0, true);'),
+        ('void ExternalNotificationModule::triggerVibraOutput()\n{', 'void ExternalNotificationModule::triggerVibraOutput()\n{\n    vibraAlertActive = true;'),
+        ('        setExternalState(0, true);', '        genericAlertActive = true;\n        setExternalState(0, true);'),
+    ]:
+        # Match complete lines so the different indentation levels remain distinct.
+        before_lines = '\n' + before + '\n' if before.startswith(' ') else before
+        after_lines = '\n' + after + '\n' if before.startswith(' ') else after
+        assert expected.count(before_lines) == 1, before
+        expected = expected.replace(before_lines, after_lines, 1)
+    assert current == expected, 'Custom buzzer/RTTTL code changed beyond reviewed notification fixes'
     assert 'uses: actions/checkout' not in Path('.github/actions/setup-base/action.yml').read_text(), 'Nested checkout regression'
     for backend in ['SX126x', 'LR11x0']:
         text = Path(f'src/mesh/{backend}Interface.cpp').read_text()
@@ -174,10 +205,11 @@ def source_audit():
         assert 'return !rxOffline;' in text[pos:text.index('\n}', pos)]
     return {'source_sha': git('rev-parse', 'HEAD'), 'baseline': BASE, 'preserved_paths': preserved,
             'integration_baseline': INTEGRATION_BASE, 'integration_paths': sorted(integration_paths),
-            'scope': 'muzi-base only', 'custom_notification_delta': 'mute predicate only', 'source_audit': 'PASS',
+            'scope': 'muzi-base only', 'custom_notification_delta': 'mute predicate and independent output activation', 'source_audit': 'PASS',
             'reviewed_upstream_commits': REVIEWED_UPSTREAM_COMMITS,
             'reviewed_upstream_sources': REVIEWED_UPSTREAM_SOURCES,
             'reviewed_power_sources': REVIEWED_POWER_SOURCES,
+            'reviewed_release_sources': REVIEWED_RELEASE_SOURCES,
             'removed_unsupported_paths': REMOVED_TARGET_PATHS,
             'build_config_delta': 'Remove unused nRF54 linker hook and extra board-variant source filter'}
 

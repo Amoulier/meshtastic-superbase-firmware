@@ -112,6 +112,8 @@ class ExternalNotificationModule : public SinglePortModule, private concurrency:
     bool isNagging = false;
 
     bool isSilenced = false;
+    bool genericAlertActive = false;
+    bool vibraAlertActive = false;
     bool buzzerShouldAlert = false;
     bool buzzerPlaybackStarted = false;
     BuzzerPlaybackBackend buzzerPlaybackBackend = BuzzerPlaybackBackend::NONE;

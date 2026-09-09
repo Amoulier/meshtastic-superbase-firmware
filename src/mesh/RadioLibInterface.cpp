@@ -732,6 +732,10 @@ void RadioLibInterface::resetAGC()
 
 void RadioLibInterface::periodicRadioMaintenance()
 {
+    // A TX can start after RX failed; leave the chip alone until that packet finishes.
+    if (isSending())
+        return;
+
     // Every startReceive() call site is event-driven (RX/TX ISR, the CAD-busy branch, reconfigure), and a
     // radio left with RX off can no longer raise an RX interrupt - on a node with nothing to transmit
     // nothing would ever re-arm it. This periodic tick is that retry; maybeRecoverChipStateLoss() throttles.

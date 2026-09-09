@@ -131,10 +131,10 @@ int32_t ExternalNotificationModule::runOnce()
             delay = (moduleConfig.external_notification.output_ms ? moduleConfig.external_notification.output_ms
                                                                   : EXT_NOTIFICATION_MODULE_OUTPUT_MS);
             // externalTurnedOn[] is when each output was last toggled, so these are intervals.
-            if (Throttle::hasElapsed(externalTurnedOn[0], delay)) {
+            if (genericAlertActive && Throttle::hasElapsed(externalTurnedOn[0], delay)) {
                 setExternalState(0, !getExternal(0));
             }
-            if (Throttle::hasElapsed(externalTurnedOn[1], delay)) {
+            if (vibraAlertActive && Throttle::hasElapsed(externalTurnedOn[1], delay)) {
                 setExternalState(1, !getExternal(1));
             }
             // Only toggle buzzer output if not using PWM mode (to avoid conflict with RTTTL)
@@ -171,7 +171,7 @@ int32_t ExternalNotificationModule::runOnce()
 
 #ifdef HAS_DRV2605
             // Only trigger DRV2605 if vibration alerts are enabled
-            if (moduleConfig.external_notification.alert_message_vibra || moduleConfig.external_notification.alert_bell_vibra) {
+            if (vibraAlertActive) {
                 drv.go();
             }
 #endif
@@ -356,6 +356,8 @@ void ExternalNotificationModule::stopNow()
 {
     LOG_INFO("Turning off external notification: ");
     stopBuzzerNow();
+    genericAlertActive = false;
+    vibraAlertActive = false;
     // Turn off all outputs
     LOG_INFO("Turning off setExternalStates");
     for (int i = 0; i < 3; i++) {
@@ -520,6 +522,7 @@ ProcessMessage ExternalNotificationModule::handleReceived(const meshtastic_MeshP
 
             if (genericShouldAlert) {
                 LOG_INFO("externalNotificationModule - Generic alert");
+                genericAlertActive = true;
                 setExternalState(0, true);
             }
 
@@ -589,6 +592,7 @@ void ExternalNotificationModule::triggerBuzzerOutput()
 
 void ExternalNotificationModule::triggerVibraOutput()
 {
+    vibraAlertActive = true;
 #ifdef HAS_DRV2605
     drv.setWaveform(0, 16);
     drv.setWaveform(1, 0);
@@ -607,9 +611,8 @@ void ExternalNotificationModule::armNagCycle()
 {
     const uint32_t durationMs = moduleConfig.external_notification.nag_timeout
                                     ? moduleConfig.external_notification.nag_timeout * 1000UL
-                                    : (moduleConfig.external_notification.output_ms
-                                           ? moduleConfig.external_notification.output_ms
-                                           : EXT_NOTIFICATION_MODULE_OUTPUT_MS);
+                                    : (moduleConfig.external_notification.output_ms ? moduleConfig.external_notification.output_ms
+                                                                                    : EXT_NOTIFICATION_MODULE_OUTPUT_MS);
     nagCycleCutoff = Time::getMillis() + durationMs;
     LOG_INFO("Toggling nagCycleCutoff to %lu", nagCycleCutoff);
     isNagging = true;
@@ -637,13 +640,13 @@ void ExternalNotificationModule::startNotification()
         buzzerAlertStarted = Time::getMillis();
         buzzerAlertDurationMs = moduleConfig.external_notification.nag_timeout
                                     ? moduleConfig.external_notification.nag_timeout * 1000UL
-                                    : (moduleConfig.external_notification.output_ms
-                                           ? moduleConfig.external_notification.output_ms
-                                           : EXT_NOTIFICATION_MODULE_OUTPUT_MS);
+                                    : (moduleConfig.external_notification.output_ms ? moduleConfig.external_notification.output_ms
+                                                                                    : EXT_NOTIFICATION_MODULE_OUTPUT_MS);
     }
 
     if (generic) {
         LOG_INFO("externalNotificationModule - Generic alert");
+        genericAlertActive = true;
         setExternalState(0, true);
     }
     if (vibra) {

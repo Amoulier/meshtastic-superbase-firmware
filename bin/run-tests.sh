@@ -10,7 +10,7 @@
 # Usage:
 #   ./bin/run-tests.sh                      # run all suites, full verdict + count cross-check
 #   ./bin/run-tests.sh -f test_utf8         # run one suite (yields FILTERED, not GREEN)
-#   ./bin/run-tests.sh -e native            # override env (default: coverage)
+#   ./bin/run-tests.sh -e superbase-native-tests # explicit default environment
 #   ./bin/run-tests.sh --quiet              # only print the final RESULT line
 #   ./bin/run-tests.sh --write-manifest     # print the test/state-manifest.tsv entries this run
 #                                           # would need, for a human to paste and justify
@@ -51,9 +51,7 @@
 # varied across commits, so a red is reproducible and attributable rather than flaky. A single green
 # seed is not evidence of order independence; vary it.
 #
-# Sanitizers, per env - this trips people up: `coverage` (the default here) has ASan/LSan;
-# `native` has NONE. Verified: zero ASan symbols in the native binary. `-e native` runs are not
-# sanitized, whatever the coverage wording elsewhere implies.
+# The superbase-native-tests environment enables ASan/LSan and coverage instrumentation.
 #
 # The final line is machine-readable, e.g.:
 #   RESULT: GREEN N/N suites passed
@@ -81,7 +79,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$ROOT_DIR" || exit 1
 
-ENV="coverage"
+ENV="superbase-native-tests"
 FILTER=""
 QUIET=false
 WRITE_MANIFEST=false

@@ -15,7 +15,8 @@ MANDATORY = {
     'test_uptime_clock', 'test_admin_radio', 'test_muted_source', 'test_module_config',
     'test_superbase_radio_recovery', 'test_gps_update_scheduling',
     'test_trackball_press', 'test_superbase_navigation', 'test_superbase_broadcasts',
-    'test_phone_api_config_dump',
+    'test_phone_api_config_dump', 'test_nodedb_legacy_migration',
+    'test_nodedb_v25_roundtrip', 'test_warm_store',
 }
 
 

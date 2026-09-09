@@ -87,14 +87,34 @@ void test_broadcast_reads_its_own_channel()
     TEST_ASSERT_FALSE(isMutedForPacket(makePacket(kPeer, NODENUM_BROADCAST, 1)));
 }
 
-// channel == 0 means "the primary", which is not always slot 0.
-void test_channel_zero_resolves_to_primary_slot()
+// Decoded packets carry the actual arrival index, including a secondary in slot zero.
+void test_unmuted_slot_zero_does_not_inherit_primary_mute()
 {
     setSlot(0, meshtastic_Channel_Role_SECONDARY, false);
     setSlot(3, meshtastic_Channel_Role_PRIMARY, true);
     channels.onConfigChanged();
     TEST_ASSERT_EQUAL_UINT8(3, channels.getPrimaryIndex());
+    TEST_ASSERT_FALSE(isMutedForPacket(makePacket(kPeer, NODENUM_BROADCAST, 0)));
+    TEST_ASSERT_TRUE(isMutedForPacket(makePacket(kPeer, NODENUM_BROADCAST, 3)));
+}
+
+void test_muted_slot_zero_is_not_overridden_by_unmuted_primary()
+{
+    setSlot(0, meshtastic_Channel_Role_SECONDARY, true);
+    setSlot(3, meshtastic_Channel_Role_PRIMARY, false);
+    channels.onConfigChanged();
+    TEST_ASSERT_EQUAL_UINT8(3, channels.getPrimaryIndex());
     TEST_ASSERT_TRUE(isMutedForPacket(makePacket(kPeer, NODENUM_BROADCAST, 0)));
+    TEST_ASSERT_FALSE(isMutedForPacket(makePacket(kPeer, NODENUM_BROADCAST, 3)));
+}
+
+void test_local_broadcast_uses_its_transmit_channel()
+{
+    setSlot(0, meshtastic_Channel_Role_SECONDARY, true);
+    setSlot(3, meshtastic_Channel_Role_PRIMARY, false);
+    channels.onConfigChanged();
+    TEST_ASSERT_TRUE(isMutedForPacket(makePacket(kLocalNode, NODENUM_BROADCAST, 0)));
+    TEST_ASSERT_FALSE(isMutedForPacket(makePacket(kLocalNode, NODENUM_BROADCAST, 3)));
 }
 
 // ---------------------------------------------------------------------------
@@ -218,7 +238,9 @@ void setup()
     RUN_TEST(test_broadcast_on_muted_channel);
     RUN_TEST(test_channel_without_module_settings_is_not_muted);
     RUN_TEST(test_broadcast_reads_its_own_channel);
-    RUN_TEST(test_channel_zero_resolves_to_primary_slot);
+    RUN_TEST(test_unmuted_slot_zero_does_not_inherit_primary_mute);
+    RUN_TEST(test_muted_slot_zero_is_not_overridden_by_unmuted_primary);
+    RUN_TEST(test_local_broadcast_uses_its_transmit_channel);
 
     printf("\n=== Direct message: sender mute ===\n");
     RUN_TEST(test_dm_to_us_from_muted_sender);

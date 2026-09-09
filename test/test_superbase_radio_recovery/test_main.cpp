@@ -1,6 +1,6 @@
 #include "MeshTypes.h"
-#include "TestUtil.h"
 #include "PowerMon.h"
+#include "TestUtil.h"
 #include "UptimeClock.h"
 #include "main.h"
 #include "mesh/MeshRadio.h"
@@ -16,7 +16,12 @@ class RecoveryRadio : public RadioLibInterface
     bool reinitSucceeds = false;
     bool rxSucceeds = true;
     unsigned attempts = 0, starts = 0, agcResets = 0;
-    bool recoverChipStateLoss() override { ++attempts; return reinitSucceeds; }
+    void setSendingPacketForTest(meshtastic_MeshPacket *packet) { sendingPacket = packet; }
+    bool recoverChipStateLoss() override
+    {
+        ++attempts;
+        return reinitSucceeds;
+    }
     void startReceive() override
     {
         ++starts;
@@ -132,6 +137,29 @@ static void test_failed_reinit_stays_offline()
     TEST_ASSERT_EQUAL_UINT(0, radio->agcResets);
 }
 
+static void test_offline_recovery_waits_for_active_transmission()
+{
+    meshtastic_MeshPacket packet = meshtastic_MeshPacket_init_zero;
+    radio->rxOffline = true;
+    radio->reinitSucceeds = true;
+    radio->setSendingPacketForTest(&packet);
+
+    radio->periodicRadioMaintenance();
+    TEST_ASSERT_TRUE(radio->isSending());
+    TEST_ASSERT_TRUE(radio->rxOffline);
+    TEST_ASSERT_EQUAL_UINT(0, radio->attempts);
+    TEST_ASSERT_EQUAL_UINT(0, radio->starts);
+    TEST_ASSERT_EQUAL_UINT(0, radio->agcResets);
+    TEST_ASSERT_EQUAL_UINT(0, radio->chipRecoveryFailures);
+    TEST_ASSERT_EQUAL_UINT32(0, rebootAtMsec);
+
+    radio->setSendingPacketForTest(nullptr);
+    radio->periodicRadioMaintenance();
+    TEST_ASSERT_EQUAL_UINT(1, radio->attempts);
+    TEST_ASSERT_EQUAL_UINT(1, radio->starts);
+    TEST_ASSERT_FALSE(radio->rxOffline);
+}
+
 static void test_failed_rx_start_does_not_reset_ladder()
 {
     radio->rxOffline = true;
@@ -195,6 +223,7 @@ void setup()
     RUN_TEST(test_successful_reinit_does_not_clear_failures);
     RUN_TEST(test_quiet_offline_radio_gets_retried);
     RUN_TEST(test_failed_reinit_stays_offline);
+    RUN_TEST(test_offline_recovery_waits_for_active_transmission);
     RUN_TEST(test_failed_rx_start_does_not_reset_ladder);
     RUN_TEST(test_healthy_radio_only_runs_agc);
     RUN_TEST(test_reboot_is_delayed_until_failed_retry_window);
