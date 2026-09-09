@@ -71,19 +71,19 @@ class PowerStatus : public Status
 
     bool matches(const PowerStatus *newStatus) const
     {
-        return (newStatus->getHasBattery() != hasBattery || newStatus->getHasUSB() != hasUSB ||
-                newStatus->getBatteryVoltageMv() != batteryVoltageMv);
+        return (newStatus->hasBattery != hasBattery || newStatus->hasUSB != hasUSB || newStatus->isCharging != isCharging ||
+                newStatus->batteryVoltageMv != batteryVoltageMv || newStatus->batteryChargePercent != batteryChargePercent);
     }
     int updateStatus(const PowerStatus *newStatus)
     {
         // Only update the status if values have actually changed
         bool isDirty;
         {
-            isDirty = matches(newStatus);
+            isDirty = !initialized || matches(newStatus);
             initialized = true;
             hasBattery = newStatus->hasBattery;
             batteryVoltageMv = newStatus->getBatteryVoltageMv();
-            batteryChargePercent = newStatus->getBatteryChargePercent();
+            batteryChargePercent = newStatus->batteryChargePercent;
             hasUSB = newStatus->hasUSB;
             isCharging = newStatus->isCharging;
         }

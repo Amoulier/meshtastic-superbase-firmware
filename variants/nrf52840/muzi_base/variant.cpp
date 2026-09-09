@@ -80,4 +80,6 @@ void initVariant()
     digitalWrite(SCREEN_12V_ENABLE, LOW); //
 
     pinMode(BATTERY_CHARGING_INV, INPUT);
+    // STAT1 is open-drain and has no external pull-up on the BASE board.
+    pinMode(BQ25185_STAT1, INPUT_PULLUP);
 }

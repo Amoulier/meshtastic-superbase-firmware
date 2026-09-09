@@ -24,6 +24,7 @@
 #include "configuration.h"
 #include "main.h"
 #include "meshUtils.h"
+#include "power/BQ25185Status.h"
 #include "power/PowerHAL.h"
 #include "power/SGM41562.h"
 #include "sleep.h"
@@ -400,7 +401,7 @@ class AnalogBatteryLevel : public HasBatteryLevel
         }
 #if defined(BATTERY_CHARGING_INV)
         // bit of trickery to show 99% up until the charge finishes
-        if (!digitalRead(BATTERY_CHARGING_INV) && battery_SOC > 99)
+        if (isCharging() && battery_SOC > 99)
             battery_SOC = 99;
 #endif
         return clamp((int)(battery_SOC), 0, 100);
@@ -619,7 +620,22 @@ class AnalogBatteryLevel : public HasBatteryLevel
 #elif defined(EXT_CHRG_DETECT)
         return digitalRead(EXT_CHRG_DETECT) == EXT_CHRG_DETECT_VALUE;
 #elif defined(BATTERY_CHARGING_INV)
+#ifdef BQ25185_STAT1
+        const auto status = decodeBQ25185Status(digitalRead(BQ25185_STAT1), digitalRead(BATTERY_CHARGING_INV));
+        static auto previousStatus = BQ25185Status::Idle;
+        if (status != previousStatus) {
+            if (status == BQ25185Status::RecoverableFault)
+                LOG_WARN("BQ25185: recoverable charger fault (STAT1=0 STAT2=1)");
+            else if (status == BQ25185Status::LatchedFault)
+                LOG_WARN("BQ25185: latched charger fault (STAT1=0 STAT2=0)");
+            else
+                LOG_INFO("BQ25185: %s", status == BQ25185Status::Charging ? "charging" : "idle (complete/sleep/disabled)");
+            previousStatus = status;
+        }
+        return status == BQ25185Status::Charging;
+#else
         return !digitalRead(BATTERY_CHARGING_INV);
+#endif
 #else
 #if HAS_TELEMETRY && !MESHTASTIC_EXCLUDE_ENVIRONMENTAL_SENSOR && !defined(DISABLE_INA_CHARGING_DETECTION)
         // No charge-status pin and no INA: infer from battery presence plus external power.

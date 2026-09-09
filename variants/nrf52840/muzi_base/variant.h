@@ -101,9 +101,9 @@ extern "C" {
 #define LR11X0_DIO_AS_RF_SWITCH
 
 // GPS
-#define GPS_RX_PIN (0 + 20)  // P0.20
-#define GPS_TX_PIN (0 + 19)  // P0.19
-#define PIN_GPS_EN (32 + 1)  // P1.01
+#define GPS_RX_PIN (0 + 20) // P0.20
+#define GPS_TX_PIN (0 + 19) // P0.19
+#define PIN_GPS_EN (32 + 1) // P1.01
 
 #define PIN_SERIAL1_RX GPS_RX_PIN
 #define PIN_SERIAL1_TX GPS_TX_PIN
@@ -113,7 +113,7 @@ extern "C" {
 // Battery monitoring
 #define BATTERY_PIN (0 + 31) // P0.31
 
-// #define CHARGER_FAULT (0 + 27) // P0.27
+#define BQ25185_STAT1 (0 + 27)         // P0.27, active-low fault
 #define BATTERY_CHARGING_INV (32 + 02) // P1.02
 #define BATTERY_SENSE_RESOLUTION_BITS 12
 #define BATTERY_SENSE_RESOLUTION 4096.0
