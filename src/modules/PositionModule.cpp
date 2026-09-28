@@ -83,6 +83,8 @@ bool PositionModule::handleReceivedProtobuf(const meshtastic_MeshPacket &mp, mes
 #endif
 
             nodeDB->setLocalPosition(p, true);
+            // The same packet is privacy-filtered after this early return.
+            precision = getPositionPrecisionForChannel(mp.channel);
             return false;
         } else {
             LOG_TRACE("Incoming update from MYSELF");

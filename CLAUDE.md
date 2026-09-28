@@ -1,28 +1,64 @@
 # Claude Code instructions
 
-> **TL;DR**
->
-> |                |                                                                                                                        |
-> | -------------- | ---------------------------------------------------------------------------------------------------------------------- |
-> | Local tests    | `./bin/run-tests.sh` (exit 0 GREEN · 1 RED · 2 AMBER · 3 FILTERED)                                                     |
-> | Hardware tests | [meshtastic/meshtastic-mcp](https://github.com/meshtastic/meshtastic-mcp) (`MESHTASTIC_FIRMWARE_ROOT` → this checkout) |
-> | Format         | `trunk fmt`                                                                                                            |
-> | Mirror docs    | `.github/copilot-instructions.md` (canonical) · `AGENTS.md`                                                            |
->
-> **Need this? It's here.**
->
-> |                                                           |                                                            |
-> | --------------------------------------------------------- | ---------------------------------------------------------- |
-> | General helpers (clamp, UTF-8, string fmt…)               | `src/meshUtils.h`                                          |
-> | Logging macros (LOG_DEBUG / INFO / WARN…)                 | `src/DebugConfiguration.h`                                 |
-> | Elapsed time / deadlines (never bare `millis()` compares) | `src/mesh/Throttle.h`                                      |
-> | New module skeleton                                       | inherit `ProtobufModule<T>` in `src/mesh/ProtobufModule.h` |
-> | Observer / event wiring                                   | `src/Observer.h`                                           |
+Read `.github/copilot-instructions.md` top-to-bottom before non-trivial changes. It is the canonical
+source for conventions, NodeDB layout, encryption, tests and hardware-operation rules.
 
-**Read `.github/copilot-instructions.md` first.** That file is the canonical agent-facing document for this repo. It covers project layout, coding conventions, the build system, CI/CD, the native C++ test suite, and the MCP Server & Hardware Test Harness. Read it top-to-bottom before starting any non-trivial change.
+## Scope
 
-This file (`CLAUDE.md`) is a short pointer for Claude Code sessions. Slash commands live in `.claude/commands/`.
+Only MuziWorks Superbase (`muzi-base`, nRF52840) is maintained. The Linux environment
+`superbase-native-tests` exists solely for regression tests. Preserve the custom MQTT implicit ACK,
+DMs Only buzzer, RTTTL ownership, runtime Bluetooth, navigation and power behavior when integrating upstream.
+Do not restore removed board targets, packaging or workflows.
 
-## House rule: documentation does not live in this repo
+## Commands
 
-This repository holds firmware code. There is no `docs/` directory - the design documents that used to sit there were published to [meshtastic/meshtastic](https://github.com/meshtastic/meshtastic) in #11488 and the directory was deleted - and it must not come back. Do not create a `.md` file to describe a feature, a configuration surface, an API, a wire format, or a design; write it in the docs repo and link that PR instead. Never leave a write-up behind in the tree: no investigation notes, no mitigation plans, no migration checklists, no "how we got here" narrative, no summaries of what a change did. That is what the PR description and the commit message are for, and they are the only place it belongs. When you do write documentation upstream, write a technical manual, not a novel - what the feature does, the settings it exposes in the user's terms, and the exact API or protocol a client speaks. No story of the debugging journey, no rationale essays, no changelog prose. Concise and factual, as short as the facts allow.
+| Action                               | Command                                           |
+| ------------------------------------ | ------------------------------------------------- |
+| Initialize dependencies              | `git submodule update --init --recursive`         |
+| Build                                | `pio run -e muzi-base`                            |
+| Selected CI regression gate (Linux)  | `python3 bin/test-superbase.py`                   |
+| All discovered native suites (Linux) | `./bin/run-tests.sh`                              |
+| BLE lifecycle regression             | `python3 bin/test-nrf52-bluetooth.py`             |
+| Source preservation audit            | `python3 bin/audit-superbase-release.py --source` |
+| Docker regression gate               | `./bin/test-native-docker.sh`                     |
+| Format before commit                 | `trunk fmt`                                       |
+
+On Windows use WSL2 or Docker for native tests. The full runner exits 0 GREEN, 1 RED,
+2 AMBER, 3 FILTERED; a subset is not a full-suite gate. Native ASan/LSan and coverage are enabled
+in `superbase-native-tests`; do not use the removed `native` or `coverage` environment names.
+CI is `.github/workflows/superbase_ci.yml` plus the reusable `build_firmware.yml`.
+
+## Rules
+
+- Do not edit `src/mesh/generated/`. Protocol changes start in meshtastic/protobufs upstream.
+- Use `Throttle` for deadlines and elapsed time. Test inactive sentinels before deadline comparisons.
+- Use NodeDB copy-out satellite accessors and bitfield helpers; do not return pointers into satellite maps.
+- Keep comments to one or two lines explaining non-obvious reasons.
+- Keep investigation notes and feature/design documentation out of the tree. Use PR descriptions;
+  upstream manuals belong in meshtastic/meshtastic. Existing `docs/` records are historical, not current release approval.
+- No destructive device operation or history-rewriting Git operation without explicit operator authorization.
+- Never factory-reset to fix a routine update: a full reset rotates identity keys and breaks peer relationships.
+- Keep one serial connection per port. Close USB API clients before checking Android message reception.
+- Back up configuration and identity before an authorized flash; do not expose private keys or channel PSKs.
+- `userPrefs.jsonc` is test session state; the hardware harness snapshots/restores it. Do not edit it inside tests.
+- Source hashes are review guards. Update them only after reviewing the changed paths, never to bypass a failure.
+- State unknown causes as unknown. Automated success does not establish physical navigation, RF or battery runtime.
+
+## Hardware harness
+
+Tools and `/test`, `/diagnose`, `/repro`, `/leakhunt` workflows live in
+[meshtastic/meshtastic-mcp](https://github.com/meshtastic/meshtastic-mcp).
+Set `MESHTASTIC_FIRMWARE_ROOT` to this checkout and `MESHTASTIC_MCP_ENV_NRF52=muzi-base`.
+Discover tools in the active session; `.mcp.json` does not guarantee the host loaded them.
+The Meshtastic CLI is a fallback when MCP is unavailable, with the same authorization rules.
+
+## Helpers
+
+| Purpose                        | Location                                   |
+| ------------------------------ | ------------------------------------------ |
+| Utilities                      | `src/meshUtils.h`                          |
+| Logging                        | `src/DebugConfiguration.h`                 |
+| Timing                         | `src/mesh/Throttle.h`, `src/UptimeClock.h` |
+| Module base                    | `src/mesh/ProtobufModule.h`                |
+| Events                         | `src/Observer.h`                           |
+| Current release and validation | GitHub releases, linked from `README.md`   |

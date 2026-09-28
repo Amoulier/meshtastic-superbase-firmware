@@ -4,12 +4,14 @@
 #include "HardwareRNG.h"
 #include "PowerFSM.h"
 #include "PowerMon.h"
+#include "SPILock.h"
 #include "configuration.h"
 #include "error.h"
 #include "main.h"
 #include "mesh/PhoneAPI.h"
 #include "mesh/Throttle.h"
 #include "mesh/mesh-pb-constants.h"
+#include <InternalFileSystem.h>
 #include <bluefruit.h>
 #include <utility/bonding.h>
 static BLEService meshBleService = BLEService(BLEUuid(MESH_SERVICE_UUID_16));
@@ -22,7 +24,44 @@ static BLEDis bledis;             // DIS (Device Information Service) helper cla
 static BLEBas blebas;             // BAS (Battery Service) helper class instance
 static int lastBatteryLevel = -1; // last value written to BAS, to skip redundant writes/notifies
 #ifndef BLE_DFU_SECURE
-static BLEDfu bledfu; // DFU software update helper service
+namespace
+{
+// The library's DFU handler jumps to the bootloader from the callback task with no flash quiesce, so
+// wrap it: wait out any write in flight first, and unlock again if it comes back without jumping.
+class QuiescingBLEDfu : public BLEDfu
+{
+    struct Peek : BLECharacteristic {
+        using BLECharacteristic::_wr_authorize_cb;
+    };
+    static BLECharacteristic::write_authorize_cb_t libraryCb;
+
+    static void onControlWrite(uint16_t conn_hdl, BLECharacteristic *chr, ble_gatts_evt_write_t *request)
+    {
+        // Only START_DFU resets, and the library reads this byte without checking len, so match it exactly.
+        if (request->data[0] != 1) {
+            libraryCb(conn_hdl, chr, request);
+            return;
+        }
+        nrf52FlashQuiesce();
+        // The handler reloads the bond keys through LittleFS, so it cannot run under the FS mutex; spiLock still
+        // fences every other writer until the jump.
+        InternalFS._unlockFS();
+        libraryCb(conn_hdl, chr, request);
+        spiLock->unlock();
+    }
+
+  public:
+    err_t begin() override
+    {
+        err_t err = BLEDfu::begin();
+        libraryCb = _chr_control.*(&Peek::_wr_authorize_cb);
+        _chr_control.setWriteAuthorizeCallback(onControlWrite);
+        return err;
+    }
+};
+BLECharacteristic::write_authorize_cb_t QuiescingBLEDfu::libraryCb;
+} // namespace
+static QuiescingBLEDfu bledfu; // DFU software update helper service
 #else
 static BLEDfuSecure bledfusecure; // DFU software update helper service
 #endif
@@ -66,6 +105,7 @@ void onConnect(uint16_t conn_handle)
     // Get the reference to current connection
     BLEConnection *connection = Bluefruit.Connection(conn_handle);
     connectionHandle = conn_handle;
+    lastBatteryLevel = -1; // Deliver the current level after the new client subscribes.
     char central_name[32] = {0};
     connection->getPeerName(central_name, sizeof(central_name));
     LOG_INFO("BLE Connected to %s", central_name);
@@ -375,11 +415,10 @@ void NRF52Bluetooth::setup()
     bledis.setModel(optstr(HW_VERSION));
     bledis.setFirmwareRev(optstr(APP_VERSION));
     bledis.begin();
-    // Start the BLE Battery Service and set it to 100%
+    // Start the BLE Battery Service with an unknown level.
     LOG_INFO("Init the Battery Service");
     blebas.begin();
-    blebas.write(0); // Unknown battery level for now
-    lastBatteryLevel = 0;
+    lastBatteryLevel = blebas.write(0) ? 0 : -1;
     // Setup the Heart Rate Monitor service using
     // BLEService and BLECharacteristic classes
     LOG_INFO("Init the Mesh bluetooth service");
@@ -419,8 +458,12 @@ void updateBatteryLevel(uint8_t level)
         level = 100;
     if (level == lastBatteryLevel)
         return;
+    if (!blebas.write(level))
+        return;
+    // Retry on the next sample if subscription or notification delivery is not ready.
+    if (Bluefruit.connected() && !blebas.notify(level))
+        return;
     lastBatteryLevel = level;
-    blebas.write(level);
 }
 void NRF52Bluetooth::clearBonds()
 {

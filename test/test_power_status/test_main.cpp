@@ -12,12 +12,14 @@ class PowerObserver : public Observer<const Status *>
     int notifications = 0;
     bool charging = false;
     int percent = 0;
+    ChargeFault fault = ChargeFault::None;
 
     int onNotify(const Status *status) override
     {
         const auto *power = static_cast<const PowerStatus *>(status);
         ++notifications;
         charging = power->getIsCharging();
+        fault = power->getChargeFault();
         percent = power->getBatteryChargePercent();
         return 0;
     }
@@ -126,10 +128,43 @@ void test_bq25185_latched_fault_is_not_charging()
     TEST_ASSERT_TRUE(decodeBQ25185Status(false, false) == BQ25185Status::LatchedFault);
 }
 
+void test_fault_transitions_notify_without_changing_battery_reading()
+{
+    PowerStatus current;
+    PowerObserver observer;
+    observer.observe(&current.onNewStatus);
+    int notifications = 0;
+    for (auto fault : {ChargeFault::None, ChargeFault::Recoverable, ChargeFault::Latched, ChargeFault::None}) {
+        const PowerStatus sample(OptTrue, OptTrue, OptFalse, 3640, 30, fault);
+        current.updateStatus(&sample);
+        TEST_ASSERT_EQUAL(++notifications, observer.notifications);
+        TEST_ASSERT_TRUE(observer.fault == fault);
+        TEST_ASSERT_EQUAL(30, observer.percent);
+        TEST_ASSERT_EQUAL(3640, current.getBatteryVoltageMv());
+        current.updateStatus(&sample);
+        TEST_ASSERT_EQUAL(notifications, observer.notifications);
+    }
+}
+
+void test_bq25185_fault_requires_external_power()
+{
+    for (bool stat1 : {false, true}) {
+        for (bool stat2 : {false, true}) {
+            TEST_ASSERT_TRUE(decodeBQ25185ChargeFault(false, stat1, stat2) == ChargeFault::None);
+        }
+    }
+    TEST_ASSERT_TRUE(decodeBQ25185ChargeFault(true, true, true) == ChargeFault::None);
+    TEST_ASSERT_TRUE(decodeBQ25185ChargeFault(true, true, false) == ChargeFault::None);
+    TEST_ASSERT_TRUE(decodeBQ25185ChargeFault(true, false, true) == ChargeFault::Recoverable);
+    TEST_ASSERT_TRUE(decodeBQ25185ChargeFault(true, false, false) == ChargeFault::Latched);
+}
+
 void setup()
 {
     initializeTestEnvironment();
     UNITY_BEGIN();
+    RUN_TEST(test_fault_transitions_notify_without_changing_battery_reading);
+    RUN_TEST(test_bq25185_fault_requires_external_power);
     RUN_TEST(test_charge_stop_and_start_notify_at_constant_voltage);
     RUN_TEST(test_percentage_change_notifies_at_constant_voltage);
     RUN_TEST(test_identical_unknown_samples_only_notify_on_initialization);

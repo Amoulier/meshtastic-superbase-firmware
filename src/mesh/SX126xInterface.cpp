@@ -571,6 +571,8 @@ template <typename T> void SX126xInterface<T>::resetAGC()
     // 5. Re-calibrate image rejection for actual operating frequency
     //    Calibrate(0x7F) defaults to 902-928 MHz which is wrong for other regions.
     lora.calibrateImage(getFreq());
+    // 6. Image calibration continues after BUSY clears; wait before rewriting RX registers.
+    module.hal->delay(50);
 
     // Re-apply settings that calibration may have reset
 
@@ -594,7 +596,7 @@ template <typename T> void SX126xInterface<T>::resetAGC()
         LOG_WARN("SX126x resetAGC: 0x8B5 RX patch re-apply failed");
     }
 
-    // 6. Resume receiving
+    // 7. Resume receiving
     startReceive();
 }
 

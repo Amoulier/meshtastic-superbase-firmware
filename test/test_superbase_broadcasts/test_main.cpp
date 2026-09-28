@@ -6,6 +6,7 @@
 #include "mesh/CryptoEngine.h"
 #include "mesh/MeshService.h"
 #include "mesh/NodeDB.h"
+#include "mesh/PositionPrecision.h"
 #include "mesh/RadioLibInterface.h"
 #include "mesh/Router.h"
 #include "mesh/TransmitHistory.h"
@@ -21,6 +22,11 @@
 class BroadcastTestAccess
 {
   public:
+    static void receive(PositionModule &m, meshtastic_MeshPacket &packet, meshtastic_Position &position)
+    {
+        m.handleReceivedProtobuf(packet, &position);
+        m.alterReceivedProtobuf(packet, &position);
+    }
     static void tick(PositionModule &m) { m.runOnce(); }
     static void tick(NodeInfoModule &m) { m.runOnce(); }
     static uint32_t sent(PositionModule &m) { return m.lastGpsSend; }
@@ -374,10 +380,38 @@ static void test_noise_stats_never_sample_and_report_only_valid_measurements()
     RadioLibInterface::instance = saved;
 }
 
+static void test_fixed_position_refreshes_channel_privacy_before_rewriting()
+{
+    PositionModule m;
+    config.position.fixed_position = true;
+    const auto pinned = localPosition;
+    meshtastic_MeshPacket packet = meshtastic_MeshPacket_init_zero;
+    packet.from = nodeDB->getNodeNum();
+    packet.to = NODENUM_BROADCAST;
+    packet.transport_mechanism = meshtastic_MeshPacket_TransportMechanism_TRANSPORT_API;
+    for (uint32_t bits : {32U, 16U, 0U, 32U}) {
+        channelFile.channels[0].settings.module_settings.position_precision = bits;
+        channels.onConfigChanged();
+        meshtastic_Position position = meshtastic_Position_init_zero;
+        position.has_latitude_i = position.has_longitude_i = true;
+        position.latitude_i = 417825770;
+        position.longitude_i = -1182084390;
+        auto expected = position;
+        applyPositionPrecision(expected, getPositionPrecisionForChannel(uint8_t(0)));
+        BroadcastTestAccess::receive(m, packet, position);
+        TEST_ASSERT_EQUAL_INT32(expected.latitude_i, position.latitude_i);
+        TEST_ASSERT_EQUAL_INT32(expected.longitude_i, position.longitude_i);
+        TEST_ASSERT_EQUAL(expected.has_latitude_i, position.has_latitude_i);
+        TEST_ASSERT_EQUAL_INT32(pinned.latitude_i, localPosition.latitude_i);
+        TEST_ASSERT_EQUAL_INT32(pinned.longitude_i, localPosition.longitude_i);
+    }
+}
+
 extern "C" void setup()
 {
     initializeTestEnvironment();
     UNITY_BEGIN();
+    RUN_TEST(test_fixed_position_refreshes_channel_privacy_before_rewriting);
     RUN_TEST(test_periodic_rejection_preserves_cadence_and_generation);
     RUN_TEST(test_disabled_position_channel_does_not_consume_generation);
     RUN_TEST(test_stale_position_does_not_start_cadence);
