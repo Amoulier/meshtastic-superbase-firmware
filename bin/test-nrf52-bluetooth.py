@@ -46,6 +46,18 @@ def main():
     with tempfile.TemporaryDirectory(prefix='superbase-ble-') as directory:
         cpp = Path(directory) / 'test.cpp'
         cpp.write_text(source)
+        flash_fixture = (ROOT / 'test/fixtures/nrf52_flash_quiesce.cpp').read_text()
+        begin = ble.index('class QuiescingBLEDfu :')
+        end = ble.index('} // namespace', begin)
+        flash_source = flash_fixture.replace('// PRODUCTION_QUIESCE', function(platform, 'void nrf52FlashQuiesce()'))
+        flash_source = flash_source.replace('// PRODUCTION_DFU', ble[begin:end])
+        flash_cpp = Path(directory) / 'flash.cpp'
+        flash_cpp.write_text(flash_source)
+        flash_binary = Path(directory) / 'flash'
+        subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++17', '-Wall', '-Wextra', '-Werror',
+                        '-fsanitize=address,undefined', '-fno-omit-frame-pointer', str(flash_cpp),
+                        '-o', str(flash_binary)], check=True)
+        subprocess.run([str(flash_binary)], check=True)
         for power in [None, 4]:
             binary = Path(directory) / ('test-default' if power is None else 'test-power')
             command = [os.environ.get('CXX', 'g++'), '-std=c++17', '-Wall', '-Wextra', '-Werror',

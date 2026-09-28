@@ -16,6 +16,9 @@ REVIEWED_UPSTREAM_COMMITS = [
     '73c41105282e3f6245714efbaad2e061f7bfa821',
     '382980637b1a91cb9f493c8e62b682f5981aa166',
     '42d32fcea60f2804f2fb143276e383f0fce522c8',
+    '585ce17f598ecdd11c67c6053e7e93deadf1b2a4',
+    '0c4bee7a7be5aa79c8fba1c7e1cf19e6bab42437',
+    'd482dc78a10b65573481f81c1edfe196203f1b87',
 ]
 REVIEWED_UPSTREAM_SOURCES = {
     'src/mesh/MeshService.cpp': '3f3b41cfc68321ea3aeefb0ca7a1bbf02a00c3082c5f039bc03e869c120861d2',
@@ -43,6 +46,20 @@ REVIEWED_RELEASE_SOURCES = {
     'test/test_superbase_radio_recovery/test_main.cpp': 'd4ac056cf75b3f0420112bd5dc817836b6b6344dc2140f72577b699d8fe19bf0',
     'src/mesh/Channels.cpp': '59cfad49b392ecc70b6d0d4c34b13fe49ddda36c826b94e2072f2a1b97f919f0',
     'test/test_muted_source/test_main.cpp': 'cfe7a16b0fec75b3a66f19f31d41a5a097f71a7c91f0a865e61d11a585b2cf71',
+}
+REVIEWED_RELIABILITY_SOURCES = {
+    'src/Power.cpp': '17ca415aab4dbb096507147733e2bad2ce94e9d57ac29d10d473f6e056a950e5',
+    'src/main.h': 'a6a56c1eb1756716997333a0276962c33b8f40a651e023e527b164e1eb1f3ed8',
+    'src/mesh/NodeDB.cpp': '265d09d6d0093efc2fe42e8dd354372a8492934bd76c17425ef1d2f95cf2b772',
+    'src/mesh/WarmNodeStore.cpp': '7254a96955a7af0510f4a675276b31ca26aebe7cc751db32ff22460f5b099d47',
+    'src/platform/nrf52/NRF52Bluetooth.cpp': '7769ebbca04d57266a60020faab59181739a99c8147bffcecf4ba0a91b0cdf93',
+    'src/platform/nrf52/main-nrf52.cpp': 'bdd75d46152922d2d8e9a465df06c3d9e4aec0c2de826564e33cd923e813004e',
+    'src/mesh/SX126xInterface.cpp': 'a3f71352ff1d3a136201eb656fb5b6f60e4a20f252409c81fa90faa0840b9291',
+    'src/modules/PositionModule.cpp': '59c109c66e18ba73c784214bb1937a39f5db1972c2d58b9daf9a7df03a536597',
+    'test/test_nodedb_save_retry/test_main.cpp': 'c37f509556efc8459148e274bee4b99ba4d87e99bd2bb14ea61ba98723c734fe',
+    'test/test_superbase_broadcasts/test_main.cpp': '5c42287b0bf88133467686a347b8e37aa46ff0c8a7381b0d55f6c89c0ca2f107',
+    'test/fixtures/nrf52_flash_quiesce.cpp': '88ac170b22cff33abf7140134af7b34d943fa03e570003f0c3efc456f964e501',
+    'bin/test-nrf52-bluetooth.py': 'cc47a68887b5682d16cb1db61946cb6b3464d86ed716da02c9f71a4315129226',
 }
 REMOVED_TARGET_PATHS = [
     'src/platform/esp32/',
@@ -137,7 +154,7 @@ def source_audit():
     assert not reintroduced, f'Unsupported target files reintroduced: {reintroduced}'
     platforms = {p.name for p in Path('src/platform').iterdir() if p.is_dir() and any(f.is_file() for f in p.rglob('*'))}
     assert platforms == {'nrf52', 'portduino'}, f'Unsupported platform sources: {platforms}'
-    reviewed_sources = {**REVIEWED_UPSTREAM_SOURCES, **REVIEWED_POWER_SOURCES, **REVIEWED_RELEASE_SOURCES}
+    reviewed_sources = {**REVIEWED_UPSTREAM_SOURCES, **REVIEWED_POWER_SOURCES, **REVIEWED_RELEASE_SOURCES, **REVIEWED_RELIABILITY_SOURCES}
     reviewed_specs = [':(exclude)' + path for path in reviewed_sources]
     assert not git('diff', BASE, '--', *preserved, ':(exclude)platformio.ini', *removed_specs, *reviewed_specs), 'Preserved source changed'
     for path, expected_hash in reviewed_sources.items():
@@ -154,6 +171,11 @@ def source_audit():
     changed = set(git('diff', '--name-only', INTEGRATION_BASE, '--', 'src', *removed_specs).splitlines())
     assert changed <= integration_paths, f'Unreviewed integration changes: {changed - integration_paths}'
     expected_position = git('show', POSITION_FIX+':src/modules/PositionModule.cpp')+'\n'
+    expected_position = expected_position.replace('            nodeDB->setLocalPosition(p, true);\n            return false;',
+                                                  '            nodeDB->setLocalPosition(p, true);\n'
+                                                  '            // The same packet is privacy-filtered after this early return.\n'
+                                                  '            precision = getPositionPrecisionForChannel(mp.channel);\n'
+                                                  '            return false;', 1)
     assert Path('src/modules/PositionModule.cpp').read_text() == expected_position, 'Position differs from reviewed fix'
     assert not git('diff', INTEGRATION_BASE, '--', 'src/mesh/Default.h'), 'Custom stationary floor changed'
     ble_paths = {'src/platform/nrf52/NRF52Bluetooth.cpp', 'src/platform/nrf52/NRF52Bluetooth.h',
@@ -210,6 +232,7 @@ def source_audit():
             'reviewed_upstream_sources': REVIEWED_UPSTREAM_SOURCES,
             'reviewed_power_sources': REVIEWED_POWER_SOURCES,
             'reviewed_release_sources': REVIEWED_RELEASE_SOURCES,
+            'reviewed_reliability_sources': REVIEWED_RELIABILITY_SOURCES,
             'removed_unsupported_paths': REMOVED_TARGET_PATHS,
             'build_config_delta': 'Remove unused nRF54 linker hook and extra board-variant source filter'}
 

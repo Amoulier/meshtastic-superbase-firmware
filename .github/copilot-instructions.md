@@ -4,7 +4,7 @@
 >
 > |                |                                                                                                                        |
 > | -------------- | ---------------------------------------------------------------------------------------------------------------------- |
-> | Local tests    | `./bin/run-tests.sh` (exit 0 GREEN · 1 RED · 2 AMBER · 3 FILTERED)                                                     |
+> | Local tests    | `python3 bin/test-superbase.py` (selected CI gate); `./bin/run-tests.sh` (exit 0 GREEN · 1 RED · 2 AMBER · 3 FILTERED) |
 > | Hardware tests | [meshtastic/meshtastic-mcp](https://github.com/meshtastic/meshtastic-mcp) (`MESHTASTIC_FIRMWARE_ROOT` → this checkout) |
 > | Format         | `trunk fmt`                                                                                                            |
 > | Mirror docs    | `AGENTS.md` (short pointer for agents that don't read this file) · `CLAUDE.md` (Claude Code)                           |
@@ -24,22 +24,14 @@ This document provides context and guidelines for AI assistants working with the
 
 Meshtastic is an open-source LoRa mesh networking project for long-range, low-power communication without relying on internet or cellular infrastructure. The firmware enables text messaging, location sharing, and telemetry over a decentralized mesh network. The project uses **C++17** as its language standard across all platforms.
 
-### Supported Hardware Platforms
+### Maintained scope
 
-- **ESP32** (ESP32, ESP32-S3, ESP32-C3, ESP32-C6) - Most common platform
-- **nRF52** (nRF52840, nRF52833) - Low power Nordic chips
-- **RP2040/RP2350** - Raspberry Pi Pico variants
-- **STM32WL** - STM32 with integrated LoRa
-- **Linux/Portduino** - Native Linux builds (Raspberry Pi, etc.)
-- **macOS native** - Headless `meshtasticd` on Apple Silicon / x86_64; see `variants/native/portduino/platformio.ini` for Homebrew prereqs + CH341 LoRa setup
-
-### Supported Radio Chips
-
-- **SX1262/SX1268** - Sub-GHz LoRa (868/915 MHz regions)
-- **SX1280** - 2.4 GHz LoRa
-- **LR1110/LR1120/LR1121** - Wideband radios (sub-GHz and 2.4 GHz capable, but not simultaneously)
-- **RF95** - Legacy RFM95 modules
-- **LLCC68** - Low-cost LoRa
+This fork maintains only **MuziWorks Superbase** (`muzi-base`, nRF52840, SX1262).
+`superbase-native-tests` is a Linux host environment for regression testing, not a supported physical target.
+Other upstream architectures may appear in shared source conditionals; their board definitions and builds are not maintained here.
+Integrate upstream fixes selectively, preserving MQTT implicit ACK, DMs Only buzzer policy, RTTTL ownership,
+runtime Bluetooth, navigation, the 12-hour stationary floor and GPS/display/IMU power behavior.
+Do not reintroduce removed hardware targets, packaging or generic release workflows.
 
 ### MQTT Integration
 
@@ -267,61 +259,21 @@ Unit tests for the conversion layer live in `test/test_type_conversions/test_mai
 ## Project Structure
 
 ```text
-firmware/
-├── src/                    # Main source code
-│   ├── main.cpp           # Application entry point
-│   ├── mesh/              # Core mesh networking
-│   │   ├── NodeDB.*       # Node database management
-│   │   ├── Router.*       # Packet routing
-│   │   ├── Channels.*     # Channel management
-│   │   ├── CryptoEngine.* # AES-CTR (channels) + X25519 ECDH→AES-256-CCM (PKI for DMs/admin)
-│   │   ├── *Interface.*   # Radio interface implementations
-│   │   ├── api/           # WiFi/Ethernet server APIs (ServerAPI, PacketAPI)
-│   │   ├── http/          # HTTP server (WebServer, ContentHandler)
-│   │   ├── wifi/          # WiFi support (WiFiAPClient)
-│   │   ├── eth/           # Ethernet support (ethClient)
-│   │   ├── udp/           # UDP multicast
-│   │   ├── compression/   # Message compression (unishox2)
-│   │   └── generated/     # Protobuf generated code
-│   ├── modules/           # Feature modules (Position, Telemetry, etc.)
-│   │   └── Telemetry/     # Telemetry subsystem
-│   │       └── Sensor/    # 50+ I2C sensor drivers
-│   ├── gps/               # GPS handling
-│   ├── graphics/          # Display drivers and UI
-│   │   └── niche/         # Specialized UIs (InkHUD e-ink framework)
-│   ├── platform/          # Platform-specific code (esp32, nrf52, rp2xx0, stm32wl, portduino)
-│   ├── input/             # Input device handling (InputBroker, keyboards, buttons)
-│   ├── detect/            # I2C hardware auto-detection (80+ device types)
-│   ├── motion/            # Accelerometer drivers (BMA423, BMI270, MPU6050, etc.)
-│   ├── mqtt/              # MQTT bridge client
-│   ├── power/             # Power HAL
-│   ├── nimble/            # BLE via NimBLE
-│   ├── buzz/              # Audio/notification (buzzer, RTTTL)
-│   ├── serialization/     # JSON serialization, COBS encoding
-│   ├── watchdog/          # Hardware watchdog thread
-│   ├── concurrency/       # Threading utilities (OSThread, Lock)
-│   ├── PowerFSM.*         # Power finite state machine
-│   └── Observer.h         # Observer/Observable event pattern
-├── variants/              # Hardware variant definitions
-│   ├── esp32/            # ESP32 variants
-│   ├── esp32s3/          # ESP32-S3 variants
-│   ├── esp32c3/          # ESP32-C3 variants
-│   ├── esp32c6/          # ESP32-C6 variants
-│   ├── nrf52840/         # nRF52 variants
-│   ├── rp2040/           # RP2040/RP2350 variants
-│   ├── stm32/            # STM32WL variants
-│   └── native/           # Linux/Portduino variants
-├── protobufs/            # Protocol buffer definitions
-├── boards/               # Custom PlatformIO board definitions
-├── test/                 # Native unit-test suites (count = the test_* dirs, detected on the fly)
-└── bin/                  # Build and utility scripts
+src/                           # Shared firmware plus nrf52 and test-only portduino backends
+boards/muzi-base.json           # Only maintained physical board
+variants/nrf52840/muzi_base/    # Superbase pins and build configuration
+variants/native/portduino.ini  # superbase-native-tests environment
+protobufs/                     # Pinned upstream protocol submodule
+test/                          # Native regression suites and fixtures
+bin/                           # Build, test and source/package audit tools
+.github/workflows/             # superbase_ci.yml and build_firmware.yml
 ```
 
 ## Coding Conventions
 
 ### Formatting & the trunk toolchain
 
-`trunk fmt` is the project formatter (`trunk_check` CI rejects unformatted code). For Claude Code users, `.claude/settings.json` ships a PostToolUse hook that runs `trunk fmt --force` on every file the agent writes or edits. The hook is pure sh/grep/sed - no python or jq required - but trunk itself must be able to run:
+`trunk fmt` is the project formatter (run it before committing; no separate `trunk_check` workflow remains in this fork). For Claude Code users, `.claude/settings.json` ships a PostToolUse hook that runs `trunk fmt --force` on every file the agent writes or edits. The hook is pure sh/grep/sed - no python or jq required - but trunk itself must be able to run:
 
 - Trunk's launcher (`~/.cache/trunk/launcher/trunk`, or `trunk` on PATH) downloads the CLI version pinned in `.trunk/trunk.yaml` on first use and again whenever that pin is bumped. **The launcher needs `curl` or `wget`**; without one it fails with "Cannot download… please install curl or wget", and the hook surfaces that as a warning on every write.
 - No curl/wget available (e.g. a minimal WSL image)? Bootstrap by hand with any Python (PlatformIO bundles one at `~/.platformio/penv/bin/python`): download `https://trunk.io/releases/<ver>/trunk-<ver>-linux-x86_64.tar.gz` and place the `trunk` binary at `~/.cache/trunk/cli/<ver>-linux-x86_64/trunk` (chmod +x), where `<ver>` is the `cli.version` from `.trunk/trunk.yaml`.
@@ -338,8 +290,8 @@ firmware/
 - Use `assert()` for invariants that should never fail
 - C++17 features are available (`std::optional`, structured bindings, `if constexpr`, etc.)
 - **Keep code comments minimal - one or two lines, max.** Comment only when the _why_ isn't obvious from the code; never restate what the next line does. No multi-paragraph block comments explaining straightforward changes. The diff and commit message carry the rationale; the code carries the behavior.
-- **Documentation does not live in this repo. Do not add it here.** This repository holds firmware code. There is no `docs/` directory - the design documents that used to sit there were published to [meshtastic/meshtastic](https://github.com/meshtastic/meshtastic) in #11488 and the directory was deleted - and it must not come back. Do not create a `.md` file to describe a feature, a configuration surface, an API, a wire format, or a design; write it in the docs repo and link that PR instead. Never leave a write-up behind in the tree: no investigation notes, no mitigation plans, no migration checklists, no "how we got here" narrative, no summaries of what a change did. That is what the PR description and the commit message are for, and they are the only place it belongs. When you do write documentation upstream, write a technical manual, not a novel - what the feature does, the settings it exposes in the user's terms, and the exact API or protocol a client speaks. No story of the debugging journey, no rationale essays, no changelog prose. Concise and factual, as short as the facts allow.
-- **Never compare against `millis()` directly. Use `Throttle`.** `src/mesh/Throttle.h` is the sanctioned way to ask about time, and CI enforces this (`millis-deadline-check` in `.github/workflows/test_native.yml` fails the PR on a new `millis() >` / `< millis()` comparison).
+- **Documentation does not live in this repo. Do not add it here.** This repository holds firmware code. Existing `docs/` files are historical fork records, not a place for new documentation. Upstream no longer has a `docs/` directory - the design documents that used to sit there were published to [meshtastic/meshtastic](https://github.com/meshtastic/meshtastic) in #11488 and the directory was deleted - and it must not come back. Do not create a `.md` file to describe a feature, a configuration surface, an API, a wire format, or a design; write it in the docs repo and link that PR instead. Never leave a write-up behind in the tree: no investigation notes, no mitigation plans, no migration checklists, no "how we got here" narrative, no summaries of what a change did. That is what the PR description and the commit message are for, and they are the only place it belongs. When you do write documentation upstream, write a technical manual, not a novel - what the feature does, the settings it exposes in the user's terms, and the exact API or protocol a client speaks. No story of the debugging journey, no rationale essays, no changelog prose. Concise and factual, as short as the facts allow.
+- **Never compare against `millis()` directly. Use `Throttle`.** `src/mesh/Throttle.h` is the sanctioned way to ask about time, for this fork as well; do not introduce a raw `millis() >` / `< millis()` comparison.
   - `Throttle::isWithinTimespanMs(lastMs, intervalMs)` - true while still inside the cooldown.
   - `Throttle::hasElapsed(lastMs, intervalMs)` - its complement, true once the interval has passed (inclusive `>=`). Prefer this to spelling `!isWithinTimespanMs(...)`.
   - `Throttle::execute(&lastMs, intervalMs, func)` - function-pointer form that updates the timestamp on fire.
@@ -497,7 +449,7 @@ Key defines in variant.h:
 - Regenerate with `bin/regen-protos.sh`
 - Message types prefixed with `meshtastic_`
 - Nanopb `.options` files control field sizes and encoding
-- **Never edit or commit files under `src/mesh/generated/`.** They are regenerated from the [`meshtastic/protobufs`](https://github.com/meshtastic/protobufs) submodule by the `update_protobufs.yml` GitHub Action and any hand edits will be overwritten - guaranteed merge conflict on the next sync. To change a wire format, open a PR against the protobufs repo first; the workflow then re-runs `bin/regen-protos.sh` and opens a PR here with the regenerated sources.
+- **Never edit or commit files under `src/mesh/generated/`.** They are regenerated from the [`meshtastic/protobufs`](https://github.com/meshtastic/protobufs) submodule by upstream protobuf automation (this fork has no `update_protobufs.yml` workflow) and any hand edits will be overwritten - guaranteed merge conflict on the next sync. To change a wire format, open a PR against the protobufs repo first; the workflow then re-runs `bin/regen-protos.sh` and opens a PR here with the regenerated sources; this fork must selectively adopt the upstream update.
 
 ### Conditional Compilation
 
@@ -519,34 +471,22 @@ Key defines in variant.h:
 
 ### Agent Tooling Baseline
 
-Mirror counterpart: `AGENTS.md` under **Agent Tooling Baseline**.
-
-To reduce avoidable agent mistakes, assume these tools are available (or install them before significant repo work):
-
-- **Required CLI basics**: `bash`, `git`, `find`, `grep`, `sed`, `awk`, `xargs`
-- **Strongly recommended**: `rg` (ripgrep) for fast file/text search, `jq` for JSON processing
-- **Build/test tools**: `python3`, `pip`, virtualenv (`python3 -m venv`), `platformio` (`pio`)
-- **Containerized native testing**: `docker` (fallback for non-Linux hosts; macOS can also build natively via `pio run -e native-macos`)
-
-Fallback expectations for agents:
-
-- If `rg` is unavailable, use `find` + `grep` instead of failing.
-- For native tests on hosts without Linux deps, prefer `./bin/test-native-docker.sh`.
-- The simulator helper script is `./bin/test-simulator.sh`.
-
-Uses **PlatformIO** with custom scripts:
-
-- `bin/platformio-pre.py` - Pre-build script
-- `bin/platformio-custom.py` - Custom build logic, manifest generation
-
-Build commands:
+Use Git, Python 3, PlatformIO, ripgrep and Trunk. Native tests require Linux, Bash 4+,
+GNU coreutils and the libraries installed by `.github/actions/setup-native/action.yml`.
+On Windows use WSL2; Docker is another option through `bin/test-native-docker.sh`.
+Keep tools and logs outside tracked source. Run Git Bash with its `usr/bin` available when
+Windows Git submodule commands cannot find `basename` or `sed`.
 
 ```bash
-pio run -e tbeam              # Build specific target
-pio run -e tbeam -t upload    # Build and upload
-pio run -e native             # Build native/Linux version
-pio run -e native-macos       # Build headless macOS meshtasticd (Homebrew prereqs in variants/native/portduino/platformio.ini)
+git submodule update --init --recursive
+pio run -e muzi-base
+python3 bin/audit-superbase-release.py --source
+python3 bin/test-nrf52-bluetooth.py
+python3 bin/test-superbase.py
 ```
+
+Build scripts: `bin/platformio-pre.py`, `bin/platformio-custom.py` and `bin/build-nrf52.sh`.
+Never change pinned dependencies or generated protocol bindings merely to make a build pass.
 
 ### Build Manifest
 
@@ -566,14 +506,10 @@ pio run -e native-macos       # Build headless macOS meshtasticd (Homebrew prere
 5. Add protobuf messages if needed in `protobufs/meshtastic/`
 6. Add test suite in `test/test_mymodule/` if applicable
 
-### Adding a New Hardware Variant
+### Hardware scope changes
 
-1. Create directory under `variants/<arch>/<name>/`
-2. Add `variant.h` with pin definitions and hardware capability defines
-3. Add `platformio.ini` with build config - use `extends` to reference common base (e.g., `esp32s3_base`)
-4. Set `board_level` (required - `release` for a normal variant; see "Build Matrix Generation")
-5. Set `custom_meshtastic_support_level` (1-3) and the other `custom_meshtastic_*` metadata
-6. For e-ink displays, add `nicheGraphics.h` for InkHUD configuration
+Do not add another physical board unless the user explicitly changes this fork's scope.
+The source audit rejects extra boards, variant roots, platforms and workflows.
 
 ### Adding a New Telemetry Sensor
 
@@ -614,158 +550,49 @@ Many devices are battery-powered:
 
 ## GitHub Actions CI/CD
 
-The project uses GitHub Actions extensively for CI/CD. Key workflows are in `.github/workflows/`:
+- `superbase_ci.yml`: pushes and PRs targeting `develop`, plus manual runs. Checks hardware scope,
+  source preservation, nRF52 BLE lifecycle, selected native suites in three shards, and a fresh Superbase build.
+- `build_firmware.yml`: reusable `muzi-base` build and package generation.
+- `bin/audit-superbase-release.py`: reviewed source hashes and changes; package mode checks OTA/UF2
+  payload equivalence, manifest hashes, CRC, vectors and reserved-flash boundaries.
 
-### Core CI Workflows
-
-- **`main_matrix.yml`** - Main CI pipeline, runs on push to `master`/`develop` and PRs
-  - Uses `bin/generate_ci_matrix.py` to dynamically generate build targets
-  - Builds all supported hardware variants
-  - PRs build a subset (`--level pr`) for faster feedback
-
-- **`trunk_check.yml`** - Code quality checks on PRs
-  - Runs Trunk.io for linting and formatting
-  - Must pass before merge
-
-- **`tests.yml`** - End-to-end and hardware tests
-  - Runs daily on schedule
-  - Includes native tests and hardware-in-the-loop testing
-
-- **`test_native.yml`** - Native platform unit tests
-  - Runs `pio test -e native`
-
-### Release Workflows
-
-- **`release_channels.yml`** - Triggered on GitHub release publish
-  - Builds Docker images
-  - Packages for PPA (Ubuntu), OBS (openSUSE), and COPR (Fedora)
-  - Handles Alpha/Beta/Stable release channels
-
-- **`nightly.yml`** - Nightly builds from develop branch
-
-- **`docker_build.yml`** / **`docker_manifest.yml`** - Docker image builds
-
-### Build Matrix Generation
-
-The CI uses `bin/generate_ci_matrix.py` to dynamically select which targets to build:
-
-```bash
-# Generate full build matrix
-./bin/generate_ci_matrix.py all
-
-# Generate PR-level matrix (subset for faster builds)
-./bin/generate_ci_matrix.py all --level pr
-```
-
-Every variant env **must** declare a `board_level` in its `platformio.ini`; the matrix
-generator exits non-zero if any env is missing it or uses an unrecognized value:
-
-- `board_level = pr` - Smallest subset, built on every PR (and in every larger matrix)
-- `board_level = release` - The full release matrix, built on push / schedule / `workflow_dispatch`
-- `board_level = extra` - Opt-in only, built when explicitly requested via `--level extra`
-
-`custom_meshtastic_support_level` (1-3) is **not** part of this filtering. It is variant
-metadata that `bin/platformio-custom.py` emits as `supportLevel` in the generated
-hardware list; changing it does not change which targets CI builds.
-
-### Running Workflows Locally
-
-Most workflows can be triggered manually via `workflow_dispatch` for testing.
+Update source expectations only after reviewing the exact change; never weaken a guard to hide a failure.
+Keep new regressions in the selected set in `bin/test-superbase.py` when they cover critical Superbase paths.
+The latest published GitHub release records install packages, their source SHA and physical validation limits.
+A green CI run does not publish a release or prove physical behavior.
 
 ## Testing
 
 ### Native unit tests (C++)
 
-Unit tests in `test/` directory. The canonical suite count is detected on the fly: the `test_*` directories under `test/` are the register, and `bin/run-tests.sh` cross-checks the suites that actually ran against them on every full run. **Never state the count as a literal anywhere** - it is whatever `test/test_*` contains right now. In CI, the `suite-shrinkage-check` job (`test_native.yml`) fails a PR that loses a `test_*` directory relative to its merge base unless the suite is named in the PR title, body, or a commit message - deleting a suite therefore requires saying so. The list below is a partial description of what suites cover, not an inventory:
-
-- `test_admin_radio/` - LoRa region/config validation, AdminModule dispatch, node-DB metadata saves
-- `test_fscommon_getfiles/` - bounded file-manifest walk (cap, depth, truncation reporting)
-- `test_atak/` - ATAK integration
-- `test_crypto/` - Cryptography
-- `test_default/` - Default configuration
-- `test_hop_scaling/` - Hop scaling histogram and required-hop logic
-- `test_http_content_handler/` - HTTP handling
-- `test_mac_from_string/` - MAC address parsing
-- `test_mesh_module/` - Module framework
-- `test_meshpacket_serializer/` - Packet serialization
-- `test_mqtt/` - MQTT integration
-- `test_nexthop_routing/` - Next-hop routing logic
-- `test_nodedb_blocked/` - NodeDB blocked-node handling
-- `test_packet_history/` - Packet history tracking
-- `test_packet_signing/` - Packet signing
-- `test_position_module/` - Position module behaviour
-- `test_position_precision/` - Position precision helpers
-- `test_radio/` - Radio interface
-- `test_rtc/` - RTC / time handling
-- `test_serial/` - Serial communication
-- `test_tak_config/` - TAK (ATAK) team/role value fidelity through set/save/load/get
-- `test_module_config/` - every ModuleConfig submessage survives admin set -> save -> load -> get
-- `test_traffic_management/` - Traffic management (dedup, rate-limit, hop-trim, role exceptions)
-- `test_transmit_history/` - Retransmission tracking
-- `test_type_conversions/` - NodeDB v25 type conversion (bitfield round-trips, NodeInfoLite)
-- `test_utf8/` - UTF-8 utilities
-- `test_warm_store/` - Warm-tier node store
-
-**Preferred run command - `bin/run-tests.sh`** (defaults to the `coverage` env; emits a machine-readable verdict on the final line; new `test_*` directories are picked up automatically):
+`superbase-native-tests` is the only native PlatformIO environment. It enables coverage and ASan/LSan.
+The old `native`, `coverage`, `native-macos` and other generic environments were removed.
 
 ```bash
-./bin/run-tests.sh                             # all suites
-./bin/run-tests.sh -f test_traffic_management  # single suite (yields FILTERED, not GREEN)
+python3 bin/test-superbase.py                 # Complete selected Superbase regression gate
+./bin/run-tests.sh                           # Every discovered test/test_* suite
+./bin/run-tests.sh -f test_nodedb_save_retry   # Diagnostic subset, not a full gate
+python3 bin/test-nrf52-bluetooth.py            # Production BLE bodies with ASan/UBSan
+./bin/test-native-docker.sh                   # Selected gate in Docker
 ```
 
-**The harness is Linux-only, and rejects anything else.** `bin/run-tests.sh` needs bash 4+ and GNU coreutils/find (`find -printf`, `md5sum`, `-executable`), so it exits 2 on a non-Linux `uname` rather than degrade quietly - a state check that silently mis-hashes a sandbox still prints a verdict, and that verdict would be worthless. The `native-macos` PlatformIO env is a **build** target for `meshtasticd`, not a test host. On macOS or Windows use `./bin/test-native-docker.sh`.
+The selected runner requires all assigned suites, correct attribution, no failed/errored/skipped
+cases and clean declared filesystem state. It is not the full upstream suite.
+The full runner discovers the current suite inventory; do not hardcode suite counts.
+Use a full run before diagnosing order-dependent failures; `--shuffle` prints a reproducible seed.
+A passing filtered run cannot establish correctness of the omitted suites.
 
-**Sanitizer coverage is per env, and only one env has any.** `coverage` (the default) adds gcov + ASan/LSan on top of `native`. **`native` itself has none** - verified, zero ASan symbols in the built binary. A `-e native` run is _not_ sanitized, so do not reason from "run-tests.sh uses ASan" when you passed `-e native`.
+| Full runner exit | Verdict  | Meaning                                                        |
+| ---------------- | -------- | -------------------------------------------------------------- |
+| 0                | GREEN    | All discovered suites and checks passed                        |
+| 1                | RED      | Failure, build error, sanitizer error or attribution failure   |
+| 2                | AMBER    | Incomplete, skipped or undeclared state; also unsupported host |
+| 3                | FILTERED | Requested subset passed; other suites did not run              |
 
-**A signal name from the runner is not a crash.** `exit(UNITY_END())` returns the failure count, and PlatformIO's native runner renders a non-zero exit code as a POSIX signal - 4 failures prints `Program received signal SIGILL`, 5 prints `SIGTRAP`, and the suite is reported `[ERRORED]` instead of `[FAILED]`. Check the exit code against the failure count before theorising about memory bugs; confirm any real crash under a debugger.
-
-**Suite order is randomisable.** `./bin/run-tests.sh --shuffle` runs suites in a seeded random order; `--seed <n>` replays one. The seed defaults to the commit SHA (deterministic per commit, varied across commits), is printed at the start and on the `RESULT:` line, and the full order is printed on failure. CI shuffles its area order the same way, seeded from `GITHUB_SHA`. A single green seed is not evidence of order independence.
-
-**`-f` is not a gate.** A filtered run can pass while a full run fails, because filtering removes the suites that _create_ the state a later suite trips over. Iterate with `-f`; gate on a full run.
-
-Exit codes and verdicts (exact counts will vary; examples below are illustrative):
-
-| Exit | Verdict    | Meaning                                                                                                                                                                                                              |
-| ---- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0    | `GREEN`    | All canonical suites ran, all passed, no ignored test cases                                                                                                                                                          |
-| 1    | `RED`      | At least one failure, build error, or sanitizer fault                                                                                                                                                                |
-| 2    | `AMBER`    | All that ran passed, but something was lost or unexplained: a suite silently went missing on a full run, individual test cases were skipped (`TEST_IGNORE`), or a suite left behind shared state it does not declare |
-| 3    | `FILTERED` | A `-f` run completed cleanly; suites outside the filter were intentionally not run                                                                                                                                   |
-
-Examples - exact counts will vary by suite count and env:
-
-```text
-# GREEN: all suites ran and passed
-RESULT: GREEN N/N suites passed, all CLEAN
-
-# RED: real test failure
-RESULT: RED 1 failed
-
-# RED: sanitizer exit-time abort (all tests passed but process aborted at exit)
-RESULT: RED exit-time abort (tests passed; likely sanitizer - see hint above)
-
-# AMBER: a suite silently went missing on a full run
-RESULT: AMBER 23/24 suites ran (missing: test_radio) - all that ran passed
-
-# FILTERED: single suite run completed cleanly
-RESULT: FILTERED 1/24 suites ran (not run: test_admin_radio test_atak …) - filtered: test_serial
-```
-
-> **Copilot interface note:** When running tests via the Copilot chat interface, edits made through the chat may not be reflected in the on-disk files that the test binary reads. If tests pass in chat but fail locally (or vice versa), verify the files on disk match what you expect before trusting the result. Always confirm with a local terminal run.
-
-Raw `pio test` (no sanitizers, no verdict logic) - use only when you need to override the env:
-
-```bash
-~/.platformio/penv/bin/python -m platformio test -e native -f test_your_suite > /tmp/test_out.txt 2>&1
-grep -E 'error:|PASS|FAIL|succeeded|failed' /tmp/test_out.txt
-tail -15 /tmp/test_out.txt
-```
-
-Do **not** pipe `pio test` - line-buffering makes the terminal appear hung and hides build errors.
-
-Simulation testing: `bin/test-simulator.sh`
-
-Quick entry point for new test modules: `test/README.md` (native unit-test authoring guide, skeleton, pitfalls, and setup checklist).
+On Windows use Linux through WSL2 or Docker. A Linux-only host rejection is not a firmware failure.
+PlatformIO can render Unity's positive failure-count exit as a signal name; compare it with the
+assertion count before claiming a crash. Consult JUnit, `audit-evidence/native.log` and
+`.pio/test-state/summary.tsv` for the actual result. `test/README.md` describes fixture authoring.
 
 ### Shared state: every suite gets a clean sandbox
 
@@ -817,7 +644,7 @@ The repo registers the server via `.mcp.json` at the repo root - Claude Code / C
 
 **One MCP call per port at a time.** `SerialInterface` holds an exclusive OS-level lock on the serial port for its lifetime. If a `serial_*` session is open on `/dev/cu.usbmodem101`, calling `device_info` on the same port will fail fast pointing at the active session. Sequence calls: open → read/mutate → close, then next device. Never parallelize tool calls on the same port.
 
-### MCP tool surface (44 tools)
+### MCP tool surface (discover tools in the active session)
 
 Grouped by purpose. Full argument shapes in the meshtastic-mcp repo's README; a few high-value signatures are called out here.
 
@@ -833,7 +660,7 @@ Grouped by purpose. Full argument shapes in the meshtastic-mcp repo's README; a 
 
 `confirm=True` is a tool-level gate on top of whatever permission prompt your MCP host shows. **Don't bypass it** by asking the host to auto-approve - it exists specifically because MCP hosts sometimes remember "always allow this tool" and that's dangerous for `factory_reset`, `erase_and_flash`, `uhubctl_power(action='off')`, and `uhubctl_cycle`.
 
-**TCP / native-host nodes.** Setting `MESHTASTIC_MCP_TCP_HOST=<host[:port]>` makes `list_devices` surface a `meshtasticd` daemon (e.g. the `native-macos` build) as a synthetic `tcp://host:port` entry, and `connect()` routes through `meshtastic.tcp_interface.TCPInterface` instead of `SerialInterface`. Every read/write/admin tool that flows through `connect()` works against the daemon transparently. USB-only tools (`pio_flash`, `erase_and_flash`, `update_flash`, `touch_1200bps`, `serial_open`, `esptool_*`, `nrfutil_*`, `picotool_*`) raise a clear `ConnectionError` when handed a `tcp://` port; `pio_flash` against a `native*` env raises a `FlashError` (no upload step - use `build` and run the binary directly). The pytest harness still assumes USB-attached devices per role; TCP-aware fixtures are deferred. See the meshtastic-mcp repo's README § "TCP / native-host nodes".
+**TCP / native-host nodes.** Setting `MESHTASTIC_MCP_TCP_HOST=<host[:port]>` makes `list_devices` surface a `meshtasticd` daemon (an external daemon; this fork does not build a supported daemon target) as a synthetic `tcp://host:port` entry, and `connect()` routes through `meshtastic.tcp_interface.TCPInterface` instead of `SerialInterface`. Every read/write/admin tool that flows through `connect()` works against the daemon transparently. USB-only tools (`pio_flash`, `erase_and_flash`, `update_flash`, `touch_1200bps`, `serial_open`, `esptool_*`, `nrfutil_*`, `picotool_*`) raise a clear `ConnectionError` when handed a `tcp://` port; `pio_flash` against a `native*` env raises a `FlashError` (no upload step - use `build` and run the binary directly). The pytest harness still assumes USB-attached devices per role; TCP-aware fixtures are deferred. See the meshtastic-mcp repo's README § "TCP / native-host nodes".
 
 ### Frame injection: testing the off-air receive path
 
@@ -907,21 +734,18 @@ Launch:
 
 The plain CLI stays primary; the TUI is for operators who want a live dashboard. Both consume the same `run-tests.sh`.
 
-### Slash commands (Claude Code + Copilot)
+### External hardware workflows
 
-Three AI-assisted workflows wrap the test harness. Claude Code operators get `/test`, `/diagnose`, `/repro`; Copilot operators get `/mcp-test`, `/mcp-diagnose`, `/mcp-repro`. Bodies:
+The `/test`, `/diagnose`, `/repro` and `/leakhunt` workflows live in the separate
+meshtastic-mcp repository. Do not assume local `.claude/commands/` files exist.
+Set `MESHTASTIC_FIRMWARE_ROOT` to this checkout and `MESHTASTIC_MCP_ENV_NRF52=muzi-base`.
+Discover available MCP tools before use; `.mcp.json` registration alone does not prove a tool is active.
+If no MCP tool is available, the Meshtastic CLI may be used with the same approval and port-lock rules.
 
-- `.claude/commands/{test,diagnose,repro}.md`
-- `.github/prompts/mcp-{test,diagnose,repro}.prompt.md`
-
-`.claude/commands/README.md` is the index.
-
-House rules for agents running these prompts:
-
-- **Interpret failures, don't just echo them.** Pull firmware log tails from `report.html` and classify each failure as transient / environmental / regression. Use the exact format in `.claude/commands/test.md`.
-- **No destructive writes without operator approval.** Any skill that could reflash, factory-reset, or reboot a device must describe the action and stop. The operator authorizes.
-- **Sequential MCP calls per port.** See above.
-- **"Unknown" is a valid classification.** If evidence doesn't support a root cause, say so and list what would disambiguate. Do not invent.
+Classify failures from recorded evidence. Use "unknown" when the cause is unproven.
+One connection owns a serial port at a time. Close diagnostic USB API clients before checking Android
+message delivery because USB and BLE consume the shared phone queue.
+Back up configuration and identity before a user-authorized flash. Do not print private keys or channel PSKs.
 
 ### Key fixtures (test authors + agents debugging)
 
