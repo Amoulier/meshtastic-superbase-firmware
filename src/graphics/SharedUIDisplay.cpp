@@ -254,7 +254,10 @@ void drawCommonHeader(OLEDDisplay *display, int16_t x, int16_t y, const char *ti
     int batteryY = HEADER_OFFSET_Y + 1 + BASEUI_HEADER_MARGIN / 2;
 #if !defined(OLED_TINY)
     // === Battery Icons ===
-    if (usbPowered && !isCharging) { // This is a basic check to determine USB Powered is flagged but not charging
+    if (powerStatus->getChargeFault() != ChargeFault::None) {
+        display->drawString(batteryX + 1, textY, "!");
+        batteryX += 11;
+    } else if (usbPowered && !isCharging) { // This is a basic check to determine USB Powered is flagged but not charging
         batteryX += 1;
         batteryY += 2;
         if (currentResolution == ScreenResolution::High) {

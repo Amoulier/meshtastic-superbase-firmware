@@ -33,7 +33,7 @@ def main():
         'void NRF52Bluetooth::restoreSecurityState(', 'void NRF52Bluetooth::setup(',
         'void NRF52Bluetooth::shutdown(', 'void NRF52Bluetooth::startDisabled(',
         'void NRF52Bluetooth::resumeAdvertising(', 'void NRF52Bluetooth::disconnect(',
-        'void updateBatteryLevel(',
+        'void updateBatteryLevel(', 'void onConnect(',
     ]]
     bodies += [function(platform, 'void setBluetoothEnable(bool enable)')]
     fsm = (ROOT / 'src/PowerFSM.cpp').read_text()

@@ -105,6 +105,7 @@ void onConnect(uint16_t conn_handle)
     // Get the reference to current connection
     BLEConnection *connection = Bluefruit.Connection(conn_handle);
     connectionHandle = conn_handle;
+    lastBatteryLevel = -1; // Deliver the current level after the new client subscribes.
     char central_name[32] = {0};
     connection->getPeerName(central_name, sizeof(central_name));
     LOG_INFO("BLE Connected to %s", central_name);
@@ -414,11 +415,10 @@ void NRF52Bluetooth::setup()
     bledis.setModel(optstr(HW_VERSION));
     bledis.setFirmwareRev(optstr(APP_VERSION));
     bledis.begin();
-    // Start the BLE Battery Service and set it to 100%
+    // Start the BLE Battery Service with an unknown level.
     LOG_INFO("Init the Battery Service");
     blebas.begin();
-    blebas.write(0); // Unknown battery level for now
-    lastBatteryLevel = 0;
+    lastBatteryLevel = blebas.write(0) ? 0 : -1;
     // Setup the Heart Rate Monitor service using
     // BLEService and BLECharacteristic classes
     LOG_INFO("Init the Mesh bluetooth service");
@@ -458,8 +458,12 @@ void updateBatteryLevel(uint8_t level)
         level = 100;
     if (level == lastBatteryLevel)
         return;
+    if (!blebas.write(level))
+        return;
+    // Retry on the next sample if subscription or notification delivery is not ready.
+    if (Bluefruit.connected() && !blebas.notify(level))
+        return;
     lastBatteryLevel = level;
-    blebas.write(level);
 }
 void NRF52Bluetooth::clearBonds()
 {

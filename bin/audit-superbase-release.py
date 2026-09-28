@@ -61,6 +61,20 @@ REVIEWED_RELIABILITY_SOURCES = {
     'test/fixtures/nrf52_flash_quiesce.cpp': '88ac170b22cff33abf7140134af7b34d943fa03e570003f0c3efc456f964e501',
     'bin/test-nrf52-bluetooth.py': 'cc47a68887b5682d16cb1db61946cb6b3464d86ed716da02c9f71a4315129226',
 }
+REVIEWED_BATTERY_STATUS_SOURCES = {
+    'src/Power.cpp': 'f662f60ff67c3b925309174bcf97167db70063385a0bb628c0b0a55bab65ff23',
+    'src/PowerStatus.h': '2cdb841ebeb3398a59a95f65a94ca10232fd0193f33b6a0f356a13d45f167916',
+    'src/power/BQ25185Status.h': '210f4f972b53643e6b051c5de0e0e05d575dedec4332fd8b85974fbbaccad25b',
+    'src/power/ChargeFault.h': 'f92a787ba5cb53e97d88f84a335edb403daddf358bbe16e6fa29b952a0cf7ffc',
+    'src/platform/nrf52/NRF52Bluetooth.cpp': '6c1522c6c8ca3579d316cfaea5067698a9945663f0ac20b4dc11df6df7d464fc',
+    'src/graphics/Screen.cpp': '6d8a85f9ac173a8f5cd2698836428c04980df87cc424ac409c1d463df357f1a8',
+    'src/graphics/Screen.h': '3d9d13e9981f3843d7898da47a6f0f47de29d9276b6b5608d66631fb73064cc1',
+    'src/graphics/SharedUIDisplay.cpp': 'adb2feac630abcce4002ec26ebebce630794a8abffb1364f9e06f4e44bfbe3a3',
+    'bin/test-nrf52-bluetooth.py': 'fd9692086b656f9cf7577b9e4927b6f50223f6805da4f5ff478fbbedfc1389c6',
+    'test/fixtures/nrf52_bluetooth_lifecycle.cpp': '823a6975e43afa440cc88b9c41858c0ed781cad9c7a1bee6426980e12c6fb7f1',
+    'test/test_power_status/test_main.cpp': '705d27bcf6ec277b7d1ba709822724f992756f4fd67f7ab6a6c2328b46dee29e',
+    'test/test_superbase_navigation/test_main.cpp': '47e384dbaba3c0c7b3db6589266df00e3824701642a87c3960f1fdcdabf1795b',
+}
 REMOVED_TARGET_PATHS = [
     'src/platform/esp32/',
     'src/platform/extra_variants/',
@@ -154,7 +168,7 @@ def source_audit():
     assert not reintroduced, f'Unsupported target files reintroduced: {reintroduced}'
     platforms = {p.name for p in Path('src/platform').iterdir() if p.is_dir() and any(f.is_file() for f in p.rglob('*'))}
     assert platforms == {'nrf52', 'portduino'}, f'Unsupported platform sources: {platforms}'
-    reviewed_sources = {**REVIEWED_UPSTREAM_SOURCES, **REVIEWED_POWER_SOURCES, **REVIEWED_RELEASE_SOURCES, **REVIEWED_RELIABILITY_SOURCES}
+    reviewed_sources = {**REVIEWED_UPSTREAM_SOURCES, **REVIEWED_POWER_SOURCES, **REVIEWED_RELEASE_SOURCES, **REVIEWED_RELIABILITY_SOURCES, **REVIEWED_BATTERY_STATUS_SOURCES}
     reviewed_specs = [':(exclude)' + path for path in reviewed_sources]
     assert not git('diff', BASE, '--', *preserved, ':(exclude)platformio.ini', *removed_specs, *reviewed_specs), 'Preserved source changed'
     for path, expected_hash in reviewed_sources.items():
@@ -233,6 +247,7 @@ def source_audit():
             'reviewed_power_sources': REVIEWED_POWER_SOURCES,
             'reviewed_release_sources': REVIEWED_RELEASE_SOURCES,
             'reviewed_reliability_sources': REVIEWED_RELIABILITY_SOURCES,
+            'reviewed_battery_status_sources': REVIEWED_BATTERY_STATUS_SOURCES,
             'removed_unsupported_paths': REMOVED_TARGET_PATHS,
             'build_config_delta': 'Remove unused nRF54 linker hook and extra board-variant source filter'}
 

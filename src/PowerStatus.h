@@ -1,6 +1,7 @@
 #pragma once
 #include "Status.h"
 #include "configuration.h"
+#include "power/ChargeFault.h"
 #include <Arduino.h>
 
 namespace meshtastic
@@ -29,16 +30,18 @@ class PowerStatus : public Status
     OptionalBool hasUSB = OptUnknown;
     /// Whether we are charging the battery
     OptionalBool isCharging = OptUnknown;
+    ChargeFault chargeFault = ChargeFault::None;
 
   public:
     PowerStatus() { statusType = STATUS_TYPE_POWER; }
     PowerStatus(OptionalBool hasBattery, OptionalBool hasUSB, OptionalBool isCharging, int batteryVoltageMv = -1,
-                int8_t batteryChargePercent = 0)
+                int8_t batteryChargePercent = 0, ChargeFault chargeFault = ChargeFault::None)
         : Status()
     {
         this->hasBattery = hasBattery;
         this->hasUSB = hasUSB;
         this->isCharging = isCharging;
+        this->chargeFault = chargeFault;
         this->batteryVoltageMv = batteryVoltageMv;
         this->batteryChargePercent = batteryChargePercent;
     }
@@ -52,6 +55,8 @@ class PowerStatus : public Status
     bool getHasUSB() const { return hasUSB == OptTrue; }
 
     bool getIsCharging() const { return isCharging == OptTrue; }
+
+    ChargeFault getChargeFault() const { return chargeFault; }
 
     int getBatteryVoltageMv() const { return batteryVoltageMv; }
 
@@ -72,7 +77,8 @@ class PowerStatus : public Status
     bool matches(const PowerStatus *newStatus) const
     {
         return (newStatus->hasBattery != hasBattery || newStatus->hasUSB != hasUSB || newStatus->isCharging != isCharging ||
-                newStatus->batteryVoltageMv != batteryVoltageMv || newStatus->batteryChargePercent != batteryChargePercent);
+                newStatus->batteryVoltageMv != batteryVoltageMv || newStatus->batteryChargePercent != batteryChargePercent ||
+                newStatus->chargeFault != chargeFault);
     }
     int updateStatus(const PowerStatus *newStatus)
     {
@@ -86,6 +92,7 @@ class PowerStatus : public Status
             batteryChargePercent = newStatus->batteryChargePercent;
             hasUSB = newStatus->hasUSB;
             isCharging = newStatus->isCharging;
+            chargeFault = newStatus->chargeFault;
         }
         if (isDirty) {
             // LOG_DEBUG("Battery %dmV %d%%", batteryVoltageMv, batteryChargePercent);

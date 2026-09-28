@@ -1141,8 +1141,15 @@ void Power::readPowerStatus()
 
 #endif
 
+    ChargeFault chargeFault = ChargeFault::None;
+#ifdef BQ25185_STAT1
+    chargeFault = decodeBQ25185ChargeFault(usbPowered == OptTrue, digitalRead(BQ25185_STAT1), digitalRead(BATTERY_CHARGING_INV));
+    if (chargeFault != ChargeFault::None)
+        isChargingNow = OptFalse;
+#endif
     // Notify any status instances that are observing us
-    const PowerStatus powerStatus2 = PowerStatus(hasBattery, usbPowered, isChargingNow, batteryVoltageMv, batteryChargePercent);
+    const PowerStatus powerStatus2 =
+        PowerStatus(hasBattery, usbPowered, isChargingNow, batteryVoltageMv, batteryChargePercent, chargeFault);
 
     // Log battery-presence transitions once; skip OptUnknown so we don't lie before the first probe.
     static OptionalBool prevHasBattery = OptUnknown;

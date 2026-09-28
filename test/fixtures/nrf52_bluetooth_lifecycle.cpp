@@ -66,7 +66,42 @@ struct ServiceFake {
     void setFirmwareRev(const char *) {}
     void write(int) {}
 };
-ServiceFake meshBleService, bledfu, bledfusecure, bledis, blebas;
+ServiceFake meshBleService, bledfu, bledfusecure, bledis;
+struct BatteryServiceFake : ServiceFake {
+    bool writeOk = true, notifyOk = true, subscribed = false;
+    uint8_t stored = 0;
+    unsigned writes = 0, attempts = 0;
+    std::vector<uint8_t> notifications;
+    bool write(uint8_t level)
+    {
+        ++writes;
+        if (writeOk)
+            stored = level;
+        return writeOk;
+    }
+    bool notify(uint8_t level)
+    {
+        ++attempts;
+        if (!subscribed || !notifyOk)
+            return false;
+        notifications.push_back(level);
+        return true;
+    }
+} blebas;
+struct BLEConnection {
+    void getPeerName(char *, unsigned) {}
+};
+namespace meshtastic
+{
+struct BluetoothStatus {
+    enum class ConnectionState { CONNECTED };
+    explicit BluetoothStatus(ConnectionState) {}
+    void updateStatus(const BluetoothStatus *) {}
+};
+} // namespace meshtastic
+meshtastic::BluetoothStatus connectionStatus(meshtastic::BluetoothStatus::ConnectionState::CONNECTED);
+auto *bluetoothStatus = &connectionStatus;
+uint16_t connectionHandle = 0;
 struct AdvertisingFake {
     bool restart = false, running = false, succeed = true;
     unsigned starts = 0, stops = 0, payloads = 0;
@@ -98,6 +133,8 @@ struct PeriphFake {
     void setConnInterval(int, int) {}
 };
 struct BluefruitFake {
+    BLEConnection peer;
+    BLEConnection *Connection(uint16_t) { return &peer; }
     SecurityFake Security;
     AdvertisingFake Advertising, ScanResponse;
     PeriphFake Periph;
@@ -152,7 +189,7 @@ const char *getDeviceName()
 {
     return "Superbase";
 }
-void onConnect(uint16_t) {}
+void onConnect(uint16_t);
 void onDisconnect(uint16_t, uint8_t) {}
 void setupMeshService()
 {
@@ -198,7 +235,9 @@ void reset(int mode, bool bootEnabled)
     nrf52Bluetooth = nullptr;
     Bluefruit = {};
     powerMonitor = {};
-    bledfu = bledis = blebas = {};
+    bledfu = bledis = {};
+    blebas = {};
+    lastBatteryLevel = -1;
     meshRegistrations = criticalErrors = now = 0;
     rebootAtMsec = shutdownAtMsec = 0;
     config.bluetooth.mode = mode;
@@ -224,8 +263,57 @@ void checkOff()
     assert(!powerMonitor.on && !Bluefruit.Advertising.running && !Bluefruit.Advertising.restart);
     assert(Bluefruit.txPower == -40);
 }
+void checkBatteryNotifications()
+{
+    reset(0, true);
+    updateBatteryLevel(71);
+    assert(blebas.writes == 0);
+    setBluetoothEnable(true);
+    updateBatteryLevel(71);
+    assert(blebas.stored == 71 && blebas.attempts == 0);
+    Bluefruit.connectedNow = true;
+    onConnect(0);
+    updateBatteryLevel(71);
+    assert(blebas.notifications.empty());
+    blebas.subscribed = true;
+    updateBatteryLevel(71);
+    assert(blebas.notifications == std::vector<uint8_t>{71});
+    auto writes = blebas.writes;
+    updateBatteryLevel(71);
+    assert(blebas.writes == writes && blebas.notifications.size() == 1);
+    updateBatteryLevel(32);
+    assert(blebas.stored == 32 && blebas.notifications.back() == 32);
+    blebas.writeOk = false;
+    updateBatteryLevel(29);
+    assert(blebas.stored == 32 && blebas.notifications.size() == 2);
+    blebas.writeOk = true;
+    updateBatteryLevel(29);
+    assert(blebas.notifications.back() == 29);
+    blebas.notifyOk = false;
+    updateBatteryLevel(31);
+    assert(blebas.stored == 31 && blebas.notifications.size() == 3);
+    blebas.notifyOk = true;
+    updateBatteryLevel(31);
+    assert(blebas.notifications.back() == 31 && blebas.notifications.size() == 4);
+    Bluefruit.connectedNow = false;
+    updateBatteryLevel(30);
+    assert(blebas.stored == 30 && blebas.notifications.size() == 4);
+    Bluefruit.connectedNow = true;
+    onConnect(1);
+    updateBatteryLevel(30);
+    assert(blebas.notifications.back() == 30 && blebas.notifications.size() == 5);
+    onConnect(2);
+    updateBatteryLevel(30);
+    assert(blebas.notifications.size() == 6);
+    updateBatteryLevel(255);
+    assert(blebas.stored == 100 && blebas.notifications.back() == 100);
+    updateBatteryLevel(0);
+    assert(blebas.stored == 0 && blebas.notifications.back() == 0);
+    std::puts("PASS: BAS notification, subscription, deduplication, reconnect, write/notify retry and clamping");
+}
 int main()
 {
+    checkBatteryNotifications();
     for (int mode : {0, 1, 2})
         for (bool boot : {false, true}) {
             reset(mode, boot);

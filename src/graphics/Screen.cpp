@@ -2076,8 +2076,19 @@ int Screen::handleStatusUpdate(const meshtastic::Status *arg)
         break;
     case STATUS_TYPE_POWER: {
         bool currentUSB = powerStatus->getHasUSB();
-        if (currentUSB != lastPowerUSBState) {
+        const auto fault = powerStatus->getChargeFault();
+        if (fault != lastChargeFault) {
+            const char *previousMessage = chargeFaultMessage(lastChargeFault);
+            if (previousMessage && NotificationRenderer::current_notification_type == notificationTypeEnum::text_banner &&
+                strcmp(NotificationRenderer::alertBannerMessage, previousMessage) == 0)
+                NotificationRenderer::resetBanner();
+            const char *message = chargeFaultMessage(fault);
+            if (message && useDisplay && !NotificationRenderer::isOverlayBannerShowing())
+                showSimpleBanner(message, 10000);
+        }
+        if (currentUSB != lastPowerUSBState || fault != lastChargeFault) {
             lastPowerUSBState = currentUSB;
+            lastChargeFault = fault;
             forceDisplay(true);
         }
         break;

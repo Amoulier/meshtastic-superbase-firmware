@@ -1,6 +1,7 @@
 #pragma once
 
 #include "configuration.h"
+#include "power/ChargeFault.h"
 
 #include "detect/ScanI2C.h"
 #include "mesh/generated/meshtastic/config.pb.h"
@@ -811,6 +812,7 @@ class Screen : public concurrency::OSThread
     std::atomic<bool> textMessageFrameShown{false};
     /// Track USB power state to only wake screen on actual power state changes
     bool lastPowerUSBState = false;
+    ChargeFault lastChargeFault = ChargeFault::None;
 
     // Implementation to Adjust Brightness
     uint8_t brightness = BRIGHTNESS_DEFAULT; // H = 254, MH = 192, ML = 130 L = 103
