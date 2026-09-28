@@ -711,7 +711,6 @@ void NotificationRenderer::drawAlertBannerOverlay(OLEDDisplay *display, OLEDDisp
     // === Layout Configuration ===
     constexpr uint16_t vPadding = 2;
 
-    uint16_t optionWidths[alertBannerOptions] = {0};
     uint16_t maxWidth = 0;
     uint16_t arrowsWidth = display->getStringWidth(">  <", 4, true);
     uint16_t lineWidths[MAX_LINES] = {0};
@@ -752,11 +751,11 @@ void NotificationRenderer::drawAlertBannerOverlay(OLEDDisplay *display, OLEDDisp
     // Measure option widths
     display->setFont(FONT_SMALL);
     for (int i = 0; i < alertBannerOptions; i++) {
-        optionWidths[i] = display->getStringWidth(optionsArrayPtr[i], strlen(optionsArrayPtr[i]), true);
-        if (optionWidths[i] > maxWidth)
-            maxWidth = optionWidths[i];
-        if (optionWidths[i] + arrowsWidth > maxWidth)
-            maxWidth = optionWidths[i] + arrowsWidth;
+        const uint16_t optionWidth = display->getStringWidth(optionsArrayPtr[i], strlen(optionsArrayPtr[i]), true);
+        if (optionWidth > maxWidth)
+            maxWidth = optionWidth;
+        if (optionWidth + arrowsWidth > maxWidth)
+            maxWidth = optionWidth + arrowsWidth;
     }
 
     // Handle input

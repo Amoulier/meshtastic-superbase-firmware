@@ -6,6 +6,7 @@
 #include "graphics/SharedUIDisplay.h"
 #include "graphics/draw/NotificationRenderer.h"
 #include "input/TrackballInterruptBase.h"
+#include "modules/ExternalNotificationModule.h"
 #include "platform/portduino/PortduinoGlue.h"
 #include <PortduinoGPIO.h>
 #include <memory>
@@ -69,7 +70,7 @@ struct ScreenNavigationTest {
     {
         s.dispdev->clear();
         drawCommonHeader(s.dispdev, 0, 0);
-        auto *buffer = s.dispdev->getBuffer();
+        auto *buffer = s.dispdev->buffer;
         return {buffer, buffer + 50};
     }
 };
@@ -100,6 +101,8 @@ Capture capture;
 std::unique_ptr<GPIOPinIf> savedPins[5];
 LevelPin *levels[5];
 NodeDB *testDB;
+ExternalNotificationModule *savedNotification;
+std::unique_ptr<ExternalNotificationModule> testNotification;
 bool savedReal, savedOsk;
 bool realClock;
 void irq(unsigned key)
@@ -148,6 +151,8 @@ void release(unsigned key)
 void attachScreen()
 {
     realClock = true;
+    testNotification = std::make_unique<ExternalNotificationModule>();
+    externalNotificationModule = testNotification.get();
     Time::useRealClock();
     graphics::ScreenNavigationTest::init(*screen, *inputBroker);
 }
@@ -177,6 +182,7 @@ void setUp()
     config = meshtastic_LocalConfig_init_zero;
     moduleConfig = meshtastic_LocalModuleConfig_init_zero;
     config.lora.region = meshtastic_Config_LoRaConfig_RegionCode_US;
+    savedNotification = externalNotificationModule;
     savedReal = realHardware;
     savedOsk = osk_found;
     for (unsigned i = 0; i < 5; ++i) {
@@ -204,6 +210,8 @@ void tearDown()
 {
     graphics::NotificationRenderer::resetBanner();
     screen.reset();
+    externalNotificationModule = savedNotification;
+    testNotification.reset();
     capture.unobserve(inputBroker);
     delete inputBroker;
     inputBroker = nullptr; // unregister source before destroying it

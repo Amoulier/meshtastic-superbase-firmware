@@ -62,6 +62,7 @@ REVIEWED_RELIABILITY_SOURCES = {
     'bin/test-nrf52-bluetooth.py': 'cc47a68887b5682d16cb1db61946cb6b3464d86ed716da02c9f71a4315129226',
 }
 REVIEWED_BATTERY_STATUS_SOURCES = {
+    'src/graphics/draw/NotificationRenderer.cpp': 'a9da39c7da882be9fadd8b63237822c3610a636541eb8f4008e792acc192dced',
     'src/Power.cpp': 'f662f60ff67c3b925309174bcf97167db70063385a0bb628c0b0a55bab65ff23',
     'src/PowerStatus.h': '2cdb841ebeb3398a59a95f65a94ca10232fd0193f33b6a0f356a13d45f167916',
     'src/power/BQ25185Status.h': '210f4f972b53643e6b051c5de0e0e05d575dedec4332fd8b85974fbbaccad25b',
@@ -73,7 +74,7 @@ REVIEWED_BATTERY_STATUS_SOURCES = {
     'bin/test-nrf52-bluetooth.py': 'fd9692086b656f9cf7577b9e4927b6f50223f6805da4f5ff478fbbedfc1389c6',
     'test/fixtures/nrf52_bluetooth_lifecycle.cpp': '823a6975e43afa440cc88b9c41858c0ed781cad9c7a1bee6426980e12c6fb7f1',
     'test/test_power_status/test_main.cpp': '705d27bcf6ec277b7d1ba709822724f992756f4fd67f7ab6a6c2328b46dee29e',
-    'test/test_superbase_navigation/test_main.cpp': '47e384dbaba3c0c7b3db6589266df00e3824701642a87c3960f1fdcdabf1795b',
+    'test/test_superbase_navigation/test_main.cpp': 'f690c66a46616f4af3df7515d7b6b65a6e56b3abc776b03ef51ab57028951d23',
 }
 REMOVED_TARGET_PATHS = [
     'src/platform/esp32/',
