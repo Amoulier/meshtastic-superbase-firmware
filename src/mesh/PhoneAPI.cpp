@@ -720,7 +720,9 @@ size_t PhoneAPI::getFromRadio(uint8_t *buf)
             LOG_DEBUG("Send config: power");
             fromRadioScratch.config.which_payload_variant = meshtastic_Config_power_tag;
             fromRadioScratch.config.payload_variant.power = config.power;
-            fromRadioScratch.config.payload_variant.power.ls_secs = default_ls_secs;
+            // Preserve configured sleep intervals when an app reads and writes the config back.
+            fromRadioScratch.config.payload_variant.power.ls_secs =
+                Default::getConfiguredOrDefault(config.power.ls_secs, default_ls_secs);
             break;
         case meshtastic_Config_network_tag:
             LOG_DEBUG("Send config: network");

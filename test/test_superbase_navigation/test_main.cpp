@@ -4,6 +4,8 @@
 #include "UptimeClock.h"
 #include "graphics/Screen.h"
 #include "graphics/SharedUIDisplay.h"
+#include "graphics/draw/CompassRenderer.h"
+#include "graphics/draw/MenuHandler.h"
 #include "graphics/draw/NotificationRenderer.h"
 #include "input/TrackballInterruptBase.h"
 #include "modules/ExternalNotificationModule.h"
@@ -64,6 +66,7 @@ struct ScreenNavigationTest {
     static void ready(Screen &s) { s.ui->getUiState()->lastUpdate = millis() - 1000; }
     static unsigned frame(Screen &s) { return s.ui->getUiState()->currentFrame; }
     static void focus(Screen &s, unsigned n) { s.ui->switchToFrame(n); }
+    static bool isOn(Screen &s) { return s.screenOn; }
     static void power(Screen &s, bool on) { s.screenOn = on; }
     static void updatePower(Screen &s) { s.handleStatusUpdate(powerStatus); }
     static std::vector<uint8_t> batteryHeader(Screen &s)
@@ -444,10 +447,61 @@ void test_charge_fault_preserves_open_menu()
     TEST_ASSERT_EQUAL_STRING("Menu", graphics::NotificationRenderer::alertBannerMessage);
     powerStatus = saved;
 }
+void test_westward_gps_heading_is_valid()
+{
+    attachScreen();
+    uiconfig.compass_mode = meshtastic_CompassMode_FIXED_RING;
+    float heading;
+    TEST_ASSERT_FALSE(graphics::CompassRenderer::getHeadingRadians(10.0, 10.0, heading));
+    TEST_ASSERT_TRUE(graphics::CompassRenderer::getHeadingRadians(10.0, 9.99, heading));
+    TEST_ASSERT_FLOAT_WITHIN(0.01f, 270.0f * DEG_TO_RAD, heading);
+}
+void test_backlight_action_keeps_screen_awake()
+{
+    attachScreen();
+    graphics::menuHandler::homeBaseMenu();
+    graphics::NotificationRenderer::alertBannerCallback(2); // Backlight action in the production menu.
+    TEST_ASSERT_TRUE(graphics::ScreenNavigationTest::isOn(*screen));
+}
+class ScheduledDuringRun : public concurrency::OSThread
+{
+  public:
+    ScheduledDuringRun() : OSThread("due-time-test", 1000, nullptr) {}
+    using OSThread::run;
+    unsigned long requested;
+    unsigned mode = 0;
+    unsigned long due() { return _cached_next_run; }
+    unsigned long ended() { return last_run; }
+    int32_t runOnce() override
+    {
+        setIntervalFromNow(1000);
+        requested = due();
+        delay(20);
+        if (mode == 1)
+            setInterval(2000);
+        return mode == 2 ? 3000 : RUN_SAME;
+    }
+};
+void test_scheduled_deadline_survives_work_in_run()
+{
+    ScheduledDuringRun task;
+    task.run();
+    TEST_ASSERT_EQUAL_UINT32(task.requested, task.due());
+    task.mode = 1;
+    task.run();
+    TEST_ASSERT_EQUAL_UINT32(task.ended() + 2000, task.due());
+    task.mode = 2;
+    task.run();
+    TEST_ASSERT_EQUAL_UINT32(task.ended() + 3000, task.due());
+}
+
 void setup()
 {
     initializeTestEnvironment();
     UNITY_BEGIN();
+    RUN_TEST(test_westward_gps_heading_is_valid);
+    RUN_TEST(test_backlight_action_keeps_screen_awake);
+    RUN_TEST(test_scheduled_deadline_survives_work_in_run);
     RUN_TEST(test_released_up_tap);
     RUN_TEST(test_released_down_tap);
     RUN_TEST(test_released_left_tap);

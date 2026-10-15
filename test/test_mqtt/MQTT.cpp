@@ -464,6 +464,50 @@ void test_sendDirectlyConnectedDecoded(void)
     TEST_ASSERT_EQUAL(decoded.id, env.packet->id);
 }
 
+void assertNodeInfoUplink(bool signedPayload)
+{
+    moduleConfig.mqtt.proxy_to_client_enabled = true;
+    MQTTUnitTest::restart();
+    auto packet = decoded;
+    packet.decoded.portnum = meshtastic_PortNum_NODEINFO_APP;
+    meshtastic_User user = meshtastic_User_init_zero;
+    strcpy(user.id, "!deadbeef");
+    strcpy(user.long_name, "Remote");
+    packet.decoded.payload.size =
+        pb_encode_to_bytes(packet.decoded.payload.bytes, sizeof(packet.decoded.payload.bytes), &meshtastic_User_msg, &user);
+    packet.decoded.xeddsa_signature.size = signedPayload ? 64 : 0;
+    memset(packet.decoded.xeddsa_signature.bytes, 0x5A, sizeof(packet.decoded.xeddsa_signature.bytes));
+    const auto original = packet;
+    mqtt->onSend(encrypted, packet, 0);
+    TEST_ASSERT_EQUAL(1, mockMeshService->messages_.size());
+    const auto &message = mockMeshService->messages_.front();
+    const DecodedServiceEnvelope env(message.payload_variant.data.bytes, message.payload_variant.data.size);
+    TEST_ASSERT_TRUE(env.validDecode);
+    TEST_ASSERT_EQUAL_MEMORY(&original, &packet, sizeof(packet));
+    if (signedPayload) {
+        TEST_ASSERT_EQUAL_UINT32(original.decoded.payload.size, env.packet->decoded.payload.size);
+        TEST_ASSERT_EQUAL_MEMORY(original.decoded.payload.bytes, env.packet->decoded.payload.bytes,
+                                 original.decoded.payload.size);
+        TEST_ASSERT_EQUAL_MEMORY(original.decoded.xeddsa_signature.bytes, env.packet->decoded.xeddsa_signature.bytes, 64);
+    } else {
+        meshtastic_User delivered = meshtastic_User_init_zero;
+        TEST_ASSERT_TRUE(pb_decode_from_bytes(env.packet->decoded.payload.bytes, env.packet->decoded.payload.size,
+                                              &meshtastic_User_msg, &delivered));
+        char expected[16];
+        snprintf(expected, sizeof(expected), "!%08x", getFrom(&packet));
+        TEST_ASSERT_EQUAL_STRING(expected, delivered.id);
+        TEST_ASSERT_EQUAL_STRING("Remote", delivered.long_name);
+    }
+}
+void test_signed_nodeinfo_uplink_preserves_payload()
+{
+    assertNodeInfoUplink(true);
+}
+void test_unsigned_nodeinfo_uplink_corrects_copy_only()
+{
+    assertNodeInfoUplink(false);
+}
+
 // Test that the encrypted MeshPacket is published when encryption_enabled = true.
 void test_sendDirectlyConnectedEncrypted(void)
 {
@@ -1508,6 +1552,8 @@ void setup()
 
     UNITY_BEGIN();
     RUN_TEST(test_sendDirectlyConnectedDecoded);
+    RUN_TEST(test_signed_nodeinfo_uplink_preserves_payload);
+    RUN_TEST(test_unsigned_nodeinfo_uplink_corrects_copy_only);
     RUN_TEST(test_sendDirectlyConnectedEncrypted);
     RUN_TEST(test_eventPositionPublicationFollowsCompileTimePolicy);
     RUN_TEST(test_privatePositionStillPublishesWithEventPolicy);

@@ -12,8 +12,10 @@
 
 #if defined(FSCom)
 
+#include "UptimeClock.h" // test clock
 #include "mesh/NodeDB.h"
 #include "power/PowerHAL.h"
+#include "sleep.h" // notifyReboot
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -21,9 +23,25 @@
 #include <unistd.h>
 #include <vector>
 
+// Friend seam declared in NodeDB.h (PIO_UNIT_TESTING): drive the deferred-save state directly.
+// Never instantiated - constructing one would run the real boot sequence.
+class NodeDBTestShim : public NodeDB
+{
+  public:
+    static void markDirty(NodeDB *db, uint32_t lastSaveMs)
+    {
+        db->nodeDatabaseDirty = true;
+        db->lastNodeDbSave = lastSaveMs;
+    }
+    static bool dirty(const NodeDB *db) { return db->nodeDatabaseDirty; }
+    // A node save "just happened", so updateUser()'s next save is deferred by the one-minute throttle.
+    static void markSaved(NodeDB *db, uint32_t lastSaveMs) { db->lastNodeDbSave = lastSaveMs; }
+};
+
 namespace
 {
 
+// Each scripted power check consumes one entry; remaining checks read safe.
 std::vector<bool> railScript;
 size_t railCalls = 0;
 
@@ -56,6 +74,7 @@ void writeFileBytes(const char *path, const std::vector<uint8_t> &bytes)
     f.close();
 }
 
+// FNV-1a content fingerprint; answers only "did this file change?". 0 == missing file.
 uint64_t fileFingerprint(const char *path)
 {
     std::vector<uint8_t> bytes;
@@ -69,11 +88,41 @@ uint64_t fileFingerprint(const char *path)
     return h;
 }
 
+// Make the next persisted config differ from the last one, so a landed write is visible.
 void bumpConfig()
 {
     config.device.node_info_broadcast_secs += 1;
 }
 
+// Read nodes.proto back from flash and report whether it holds this node, and under which name.
+bool persistedNodeName(NodeNum num, std::string &longName)
+{
+    meshtastic_NodeDatabase reloaded{};
+    if (nodeDB->loadProto(nodeDatabaseFileName, nodeDB->getMaxNodesAllocatedSize(), sizeof(meshtastic_NodeDatabase),
+                          &meshtastic_NodeDatabase_msg, &reloaded) != LoadFileResult::LOAD_SUCCESS)
+        return false;
+    for (const auto &n : reloaded.nodes) {
+        if (n.num == num) {
+            longName = n.long_name;
+            return true;
+        }
+    }
+    return false;
+}
+
+// A peer heard for the first time, with a key so updateUser() takes the normal path.
+meshtastic_User makePeer(const char *longName)
+{
+    meshtastic_User u = meshtastic_User_init_zero;
+    strncpy(u.long_name, longName, sizeof(u.long_name) - 1);
+    strncpy(u.short_name, "PR", sizeof(u.short_name) - 1);
+    u.public_key.size = 32;
+    memset(u.public_key.bytes, 0x5A, 32);
+    u.public_key.bytes[0] = 0x01;
+    return u;
+}
+
+// PortduinoFS::rmdir() is unlink() underneath and cannot remove a directory, so go to the host.
 bool removeHostDirectory(const char *fsPath)
 {
     std::string host = std::string(getenv("HOME")) + "/.portduino/default" + fsPath;
@@ -83,6 +132,7 @@ bool removeHostDirectory(const char *fsPath)
 } // namespace
 
 #if !defined(_WIN32)
+// Strong definition shadows the weak native default in src/power/PowerHAL.cpp.
 bool powerHAL_isPowerLevelSafe()
 {
     if (railCalls < railScript.size())
@@ -92,6 +142,8 @@ bool powerHAL_isPowerLevelSafe()
 }
 #endif
 
+// A directory squatting on the live path makes the final rename fail after the .tmp was written and
+// verified, which is the only failure SafeFile::close() reports that pb_encode cannot see.
 static void test_saveProto_failedRename_returnsFalse(void)
 {
     TEST_MESSAGE("=== saveProto: a failed rename is reported, not swallowed ===");
@@ -102,6 +154,7 @@ static void test_saveProto_failedRename_returnsFalse(void)
 
     const bool saved = nodeDB->saveProto(configFileName, meshtastic_LocalConfig_size, &meshtastic_LocalConfig_msg, &config);
 
+    // Restore the sandbox before asserting so a failure does not leak the directory into later tests.
     std::string tmp = std::string(configFileName) + ".tmp";
     FSCom.remove(tmp.c_str());
     TEST_ASSERT_TRUE(removeHostDirectory(configFileName));
@@ -137,12 +190,16 @@ static void test_saveToDisk_railStillUnsafeAtRetry_bailsWithoutFormat(void)
 
     scriptRail({true, false, false, false, false}); // never recovers while this save is in progress
 
+    // On portduino a FLASH_CORRUPTION critical error exits the process, so surviving this call is
+    // itself the proof that no format was attempted.
     TEST_ASSERT_FALSE(nodeDB->saveToDisk(SEGMENT_CONFIG));
 
     TEST_ASSERT_EQUAL_UINT64(before, fileFingerprint(configFileName));
     TEST_ASSERT_TRUE(FSCom.exists(deviceStateFileName));
 }
 
+// The whole point of the retry gate: a write that keeps failing while the filesystem still reads is a
+// busy or lock-protected flash, not corruption, and formatting would take every other file with it.
 static void test_saveToDisk_writeFailsButFsReadable_doesNotFormat(void)
 {
     TEST_MESSAGE("=== saveToDisk: unwritable but readable filesystem must not be formatted ===");
@@ -150,6 +207,8 @@ static void test_saveToDisk_writeFailsButFsReadable_doesNotFormat(void)
     TEST_ASSERT_TRUE(readFileBytes(configFileName, live));
     const uint64_t deviceStateBefore = fileFingerprint(deviceStateFileName);
 
+    // A directory on the live path fails every rename, so all retries fail - while /prefs and the
+    // other protos stay perfectly readable.
     TEST_ASSERT_TRUE(FSCom.remove(configFileName));
     TEST_ASSERT_TRUE(FSCom.mkdir(configFileName));
 
@@ -161,6 +220,7 @@ static void test_saveToDisk_writeFailsButFsReadable_doesNotFormat(void)
     writeFileBytes(configFileName, live);
 
     TEST_ASSERT_FALSE(saved);
+    // The decisive assertion: an fsFormat() would have taken devicestate with it.
     TEST_ASSERT_TRUE(FSCom.exists(deviceStateFileName));
     TEST_ASSERT_EQUAL_UINT64(deviceStateBefore, fileFingerprint(deviceStateFileName));
 }
@@ -180,12 +240,82 @@ static void test_saveToDisk_railUnsafeAtEntry_returnsFalseImmediately(void)
 }
 #endif // !_WIN32
 
+static void test_saveNodeDatabaseIfDirty_waitsOutThrottleThenSaves(void)
+{
+    TEST_MESSAGE("=== saveNodeDatabaseIfDirty: a deferred change is written once the minute passes ===");
+    Time::setTestMillis(10 * 60 * 1000);
+    NodeDBTestShim::markDirty(nodeDB, Time::getMillis()); // a save just happened, so this change was deferred
+
+    nodeDB->saveNodeDatabaseIfDirty();
+    TEST_ASSERT_TRUE(NodeDBTestShim::dirty(nodeDB)); // still inside the minute: nothing written yet
+
+    Time::advanceTestMillis(60 * 1000);
+    nodeDB->saveNodeDatabaseIfDirty();
+    TEST_ASSERT_FALSE(NodeDBTestShim::dirty(nodeDB)); // cleared only by a save that landed
+}
+
+static void test_rebootObserver_savesDirtyNodeDatabase(void)
+{
+    TEST_MESSAGE("=== reboot: a pending node change is written before restart ===");
+    Time::setTestMillis(20 * 60 * 1000);
+    NodeDBTestShim::markDirty(nodeDB, Time::getMillis()); // the throttle alone would hold it back
+
+    notifyReboot.notifyObservers(NULL);
+
+    TEST_ASSERT_FALSE(NodeDBTestShim::dirty(nodeDB));
+}
+
+// The same contract driven from a real peer: a NodeInfo arriving inside the throttle window must reach
+// nodes.proto once the window passes, not just clear the dirty flag.
+static void test_updateUser_deferredPeer_isPersistedAfterThrottle(void)
+{
+    TEST_MESSAGE("=== updateUser: a peer deferred by the throttle is written to nodes.proto later ===");
+    constexpr NodeNum kPeer = 0xE1000101;
+    Time::setTestMillis(30 * 60 * 1000);
+    NodeDBTestShim::markSaved(nodeDB, Time::getMillis());
+
+    meshtastic_User u = makePeer("Bob");
+    TEST_ASSERT_TRUE(nodeDB->updateUser(kPeer, u));
+
+    std::string name;
+    TEST_ASSERT_FALSE(persistedNodeName(kPeer, name)); // deferred: not on flash yet
+
+    Time::advanceTestMillis(60 * 1000);
+    nodeDB->saveNodeDatabaseIfDirty();
+
+    TEST_ASSERT_TRUE(persistedNodeName(kPeer, name));
+    TEST_ASSERT_EQUAL_STRING("Bob", name.c_str());
+}
+
+// A reboot inside the throttle window must not lose a peer heard just before it.
+static void test_updateUser_deferredPeer_isPersistedOnReboot(void)
+{
+    TEST_MESSAGE("=== updateUser: a deferred peer is written to nodes.proto at reboot ===");
+    constexpr NodeNum kPeer = 0xE1000102;
+    Time::setTestMillis(40 * 60 * 1000);
+    NodeDBTestShim::markSaved(nodeDB, Time::getMillis());
+
+    meshtastic_User u = makePeer("Carol");
+    TEST_ASSERT_TRUE(nodeDB->updateUser(kPeer, u));
+
+    std::string name;
+    TEST_ASSERT_FALSE(persistedNodeName(kPeer, name));
+
+    notifyReboot.notifyObservers(NULL);
+
+    TEST_ASSERT_TRUE(persistedNodeName(kPeer, name));
+    TEST_ASSERT_EQUAL_STRING("Carol", name.c_str());
+}
+
 void setUp(void)
 {
     scriptRail({});
 }
 
-void tearDown(void) {}
+void tearDown(void)
+{
+    Time::useRealClock();
+}
 
 NSR_TEST_ENTRY void setup()
 {
@@ -204,6 +334,12 @@ NSR_TEST_ENTRY void setup()
     RUN_TEST(test_saveToDisk_writeFailsButFsReadable_doesNotFormat);
     RUN_TEST(test_saveToDisk_railUnsafeAtEntry_returnsFalseImmediately);
 #endif
+
+    printf("\n=== deferred node database save ===\n");
+    RUN_TEST(test_saveNodeDatabaseIfDirty_waitsOutThrottleThenSaves);
+    RUN_TEST(test_rebootObserver_savesDirtyNodeDatabase);
+    RUN_TEST(test_updateUser_deferredPeer_isPersistedAfterThrottle);
+    RUN_TEST(test_updateUser_deferredPeer_isPersistedOnReboot);
 
     exit(UNITY_END());
 }

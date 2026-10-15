@@ -68,6 +68,12 @@ void CryptoEngine::generateKeyPair(uint8_t *pubKey, uint8_t *privKey)
 bool CryptoEngine::regeneratePublicKey(uint8_t *pubKey, uint8_t *privKey)
 {
     if (!memfll(privKey, 0, sizeof(private_key))) {
+        // Keep the public key consistent with XEdDSA's clamped signing key.
+        const uint8_t first = privKey[0], last = privKey[31];
+        privKey[0] &= 0xF8;
+        privKey[31] = (privKey[31] & 0x7F) | 0x40;
+        if (privKey[0] != first || privKey[31] != last)
+            LOG_WARN("Private key was not clamped; its public key and node number change");
         Curve25519::eval(pubKey, privKey, 0);
         if (Curve25519::isWeakPoint(pubKey)) {
             LOG_ERROR("PKI key generation failed. Specified private key results in a weak");

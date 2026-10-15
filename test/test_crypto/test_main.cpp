@@ -358,6 +358,24 @@ void test_AES_CCM_partial_block_bounds(void)
     }
 }
 
+void test_regeneratePublicKey_clamps_imported_key(void)
+{
+    uint8_t pub[32], priv[32], signature[64];
+    memset(priv, 0x11, sizeof(priv));
+    uint8_t message[] = "imported key";
+    uint32_t fromNode = 0x1111, packetId = 0x2222, toNode = 0x3333;
+    meshtastic_Data d = makeSignableData(message, sizeof(message), 5);
+    d.request_id = 0x44;
+
+    TEST_ASSERT_TRUE(crypto->regeneratePublicKey(pub, priv));
+    TEST_ASSERT_EQUAL_HEX8(0, priv[0] & 0x07);
+    TEST_ASSERT_EQUAL_HEX8(0x40, priv[31] & 0xC0);
+
+    TEST_ASSERT(crypto->xeddsa_sign(fromNode, packetId, toNode, &d, signature));
+    TEST_ASSERT_TRUE_MESSAGE(crypto->xeddsa_verify(pub, fromNode, packetId, toNode, &d, signature),
+                             "the derived public key must verify the node's own signature");
+}
+
 void setup()
 {
     // NOTE!!! Wait for >2 secs
@@ -380,6 +398,7 @@ void setup()
     RUN_TEST(test_XEdDSA_curve_to_ed_cache);
     RUN_TEST(test_XEdDSA_max_payload);
     RUN_TEST(test_XEdDSA_repeated_sign_is_randomized);
+    RUN_TEST(test_regeneratePublicKey_clamps_imported_key);
     exit(UNITY_END()); // stop unit testing
 }
 

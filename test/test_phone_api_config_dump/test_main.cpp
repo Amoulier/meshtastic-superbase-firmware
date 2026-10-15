@@ -7,6 +7,7 @@
 
 #include "Channels.h"
 #include "CryptoEngine.h"
+#include "Default.h"
 #include "MeshService.h"
 #include "NodeDB.h"
 #include "PhoneAPI.h"
@@ -660,10 +661,36 @@ void tearDown(void)
     savedState = nullptr;
 }
 
+void assertSleepInterval(uint32_t configured, uint32_t expected)
+{
+    config.power.ls_secs = configured;
+    startHandshake(FULL_DUMP_NONCE);
+    for (unsigned i = 0; i < 100; ++i) {
+        meshtastic_FromRadio msg;
+        TEST_ASSERT_TRUE(readOneFromRadio(msg));
+        if (msg.which_payload_variant == meshtastic_FromRadio_config_tag &&
+            msg.config.which_payload_variant == meshtastic_Config_power_tag) {
+            TEST_ASSERT_EQUAL_UINT32(expected, msg.config.payload_variant.power.ls_secs);
+            return;
+        }
+    }
+    TEST_FAIL_MESSAGE("Power config missing from dump");
+}
+void test_configured_sleep_interval_survives_dump()
+{
+    assertSleepInterval(1234, 1234);
+}
+void test_unset_sleep_interval_reports_default()
+{
+    assertSleepInterval(0, default_ls_secs);
+}
+
 void setup()
 {
     initializeTestEnvironment();
     UNITY_BEGIN();
+    RUN_TEST(test_configured_sleep_interval_survives_dump);
+    RUN_TEST(test_unset_sleep_interval_reports_default);
 
     printf("\n=== want_config dump sequence ===\n");
     RUN_TEST(test_full_want_config_dump_emits_documented_sequence);
