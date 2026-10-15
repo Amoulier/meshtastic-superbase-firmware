@@ -112,7 +112,7 @@ REVIEWED_OCTOBER_SOURCES = {
     "src/modules/NodeInfoModule.h": "129bb88a1f1644e8b22f27b9eba755ec73ab2bbaf154bd0aa9f5340efa18421f",
     "src/mqtt/MQTT.cpp": "48b860f46117590170252db6e52baf0f29b4ddc26301be580d78545477ff2be9",
     "test/test_admin_radio/test_main.cpp": "ba97bbfa001151773ade21a8dff27de6067c816e890ae02769868c228653083f",
-    "test/test_crypto/test_main.cpp": "cbdb6e178ff1b5ad4d1b3d98201a3727cb2a13c63692a14ac830924f6cccd3eb",
+    "test/test_crypto/test_main.cpp": "7dc33c071cbcddff34b872ce4079b5efeb070e30269df20cb7a37d1c4a0fcc50",
     "test/test_mesh_beacon/test_main.cpp": "d47665a6f8e022f2be7547e911f66e2e5b4f05f72aa9f8ea726b091360a92b71",
     "test/test_mesh_module/test_main.cpp": "5ae3a779b293fa9fbb65a5737a27dcad1e3ebd722de93b872cf25b12ff82e619",
     "test/test_nodedb_save_retry/test_main.cpp": "52ff74dc833988db140afed4bcc540f82ceb1eb77f14a8f1500085b058fe90ea",
