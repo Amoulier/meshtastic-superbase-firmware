@@ -1030,9 +1030,10 @@ static void test_relay_userPayloadUnmodified(void)
     {
       public:
         using MeshModule::alterReceived;
+        MeshModule *asModule() { return this; }
     };
     auto *module = new RelayProbe();
-    dispatchModules.push_back(module);
+    dispatchModules.push_back(module->asModule());
     module->alterReceived(p);
 
     TEST_ASSERT_EQUAL_UINT32(original.size, p.decoded.payload.size);

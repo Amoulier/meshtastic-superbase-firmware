@@ -114,7 +114,7 @@ REVIEWED_OCTOBER_SOURCES = {
     "test/test_admin_radio/test_main.cpp": "ba97bbfa001151773ade21a8dff27de6067c816e890ae02769868c228653083f",
     "test/test_crypto/test_main.cpp": "7dc33c071cbcddff34b872ce4079b5efeb070e30269df20cb7a37d1c4a0fcc50",
     "test/test_mesh_beacon/test_main.cpp": "d47665a6f8e022f2be7547e911f66e2e5b4f05f72aa9f8ea726b091360a92b71",
-    "test/test_mesh_module/test_main.cpp": "5ae3a779b293fa9fbb65a5737a27dcad1e3ebd722de93b872cf25b12ff82e619",
+    "test/test_mesh_module/test_main.cpp": "9771ac0815d231cdee4933899104cecf79e29f435b1496faa77d091d6b9b5284",
     "test/test_nodedb_save_retry/test_main.cpp": "52ff74dc833988db140afed4bcc540f82ceb1eb77f14a8f1500085b058fe90ea",
     "test/test_phone_api_config_dump/test_main.cpp": "1271de34e09f3e10d79b8d656d4cee89d88eda7450e24fd509c1a718138451d0",
     "test/test_superbase_navigation/test_main.cpp": "2bb6baf8ce1e1ffcf9fec74368a95f9c10c78f5801a11b2f76c39df349eb583b",
