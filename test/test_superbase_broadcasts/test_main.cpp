@@ -284,7 +284,8 @@ static void test_nodeinfo_throttle_keeps_generation_pending_and_resets_urgent_mo
 {
     NodeInfoModule m;
     transmitHistory->setLastSentToMesh(meshtastic_PortNum_NODEINFO_APP);
-    Time::setTestMillis(millis());
+    TEST_ASSERT_EQUAL_UINT32(Time::getMillis(), transmitHistory->getLastSentToMeshMillis(meshtastic_PortNum_NODEINFO_APP));
+    Time::advanceTestMillis(1);
     TEST_ASSERT_FALSE(m.sendOurNodeInfo(NODENUM_BROADCAST, true, 0, true));
     TEST_ASSERT_FALSE(BroadcastTestAccess::urgent(m));
     BroadcastTestAccess::tick(m);

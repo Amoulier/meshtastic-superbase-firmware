@@ -72,7 +72,7 @@ REVIEWED_CUSTOM_SOURCES = {
     "test/test_power_status/test_main.cpp": "705d27bcf6ec277b7d1ba709822724f992756f4fd67f7ab6a6c2328b46dee29e",
     "test/test_radio/test_main.cpp": "890fa74a0ea41bee8157fcd77fd4426798e4939c58c32f36b808da5b3bb41190",
     "test/test_reliable_ack_matrix/test_main.cpp": "708b93c0682521c82b440af5579f9b9e1eba2cc128b2259fb9347342c9cb1f66",
-    "test/test_superbase_broadcasts/test_main.cpp": "5c42287b0bf88133467686a347b8e37aa46ff0c8a7381b0d55f6c89c0ca2f107",
+    "test/test_superbase_broadcasts/test_main.cpp": "1371b12d1ca1c9e3cbc1b6f721af8907264e81cd8b637d34ad2d51d33ef4ff64",
     "test/test_superbase_navigation/test_main.cpp": "2bb6baf8ce1e1ffcf9fec74368a95f9c10c78f5801a11b2f76c39df349eb583b",
     "test/test_superbase_radio_recovery/test_main.cpp": "b90bd42a17b09e2f32229dd9aa74c61e69caefb2c67892b5fa66508677ba423d",
 }
