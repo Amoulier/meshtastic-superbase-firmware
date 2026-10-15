@@ -299,7 +299,7 @@ def source_audit():
         "uses: actions/checkout"
         not in Path(".github/actions/setup-base/action.yml").read_text()
     ), "Nested checkout regression"
-    subprocess.run(["git", "diff", "--check", PREVIOUS_RELEASE, "HEAD"], check=True)
+    subprocess.run(["git", "diff", "--check", UPSTREAM_BASE, "HEAD"], check=True)
     conflict = subprocess.run(
         ["git", "grep", "-n", "-E", "^(<<<<<<<|>>>>>>>)", "--", ":!*.md"],
         capture_output=True,
