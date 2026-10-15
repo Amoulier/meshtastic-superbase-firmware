@@ -2,6 +2,7 @@
 #include "Default.h"
 #include "MeshService.h"
 #include "NodeDB.h"
+#include "UptimeClock.h"
 #include "gps/RTC.h"
 #include <Throttle.h>
 
@@ -152,7 +153,7 @@ meshtastic_MeshPacket *NeighborInfoModule::allocReply()
     meshtastic_MeshPacket *reply = allocDataProtobuf(neighborInfo);
 
     if (reply) {
-        lastSentReply = millis(); // Track when we sent this reply
+        lastSentReply = Time::skipZero(Time::getMillis()); // Track when we sent this reply
     }
     return reply;
 }

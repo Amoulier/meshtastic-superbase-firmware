@@ -11,6 +11,15 @@ import sys
 import xml.etree.ElementTree as ET
 
 MANDATORY = {
+    "test_ack_proof",
+    "test_admin_keys",
+    "test_low_battery_shutdown",
+    "test_nodeinfo_send_window",
+    "test_notified_worker_thread",
+    "test_radiolib_drivers",
+    "test_rebroadcast_mode",
+    "test_telemetry_payload_fit",
+    "test_nodedb_lora_slot",
     "test_mesh_beacon",
     "test_buzzer_mode",
     "test_mqtt",

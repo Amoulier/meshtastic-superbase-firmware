@@ -1,8 +1,8 @@
 #pragma once
 
 #include "FloodingRouter.h"
+#include <map>
 #include <optional>
-#include <unordered_map>
 
 /**
  * An identifier for a globally unique message - a pair of the sending nodenum and the packet id assigned
@@ -13,6 +13,7 @@ struct GlobalPacketId {
     PacketId id;
 
     bool operator==(const GlobalPacketId &p) const { return node == p.node && id == p.id; }
+    bool operator<(const GlobalPacketId &p) const { return node != p.node ? node < p.node : id < p.id; }
 
     explicit GlobalPacketId(const meshtastic_MeshPacket *p)
     {
@@ -75,12 +76,6 @@ struct RouteHealth {
 #define NEXTHOP_EARLY_FLOOD_ON_UNVERIFIED 0
 #endif
 
-class GlobalPacketIdHashFunction
-{
-  public:
-    size_t operator()(const GlobalPacketId &p) const { return (std::hash<NodeNum>()(p.node)) ^ (std::hash<PacketId>()(p.id)); }
-};
-
 /*
   Router for direct messages, which only relays if it is the next hop for a packet. The next hop is set by the current
   relayer of a packet, which bases this on information from a previous successful delivery to the destination via flooding.
@@ -137,7 +132,7 @@ class NextHopRouter : public FloodingRouter
     /**
      * Pending retransmissions
      */
-    std::unordered_map<GlobalPacketId, PendingPacket, GlobalPacketIdHashFunction> pending;
+    std::map<GlobalPacketId, PendingPacket> pending; // std::map keeps the libstdc++ hashtable out of small images
 
     /**
      * Per-destination route health (M3). Bounded array, reuse-oldest eviction. RAM-only.

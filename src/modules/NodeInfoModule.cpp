@@ -114,11 +114,20 @@ bool NodeInfoModule::sendOurNodeInfo(NodeNum dest, bool wantReplies, uint8_t cha
 
         prevPacketId = p->id;
 
-        ErrorCode res = service->sendToMesh(p);
-        if (res != ERRNO_OK && res != ERRNO_SHOULD_RELEASE)
+        const ErrorCode res = service->sendToMesh(p);
+        shorterTimeout = false;
+        // A rejected send never reached the air, so it neither defers the routine broadcast nor
+        // consumes a pending channel change. sendToMesh() has already released the packet.
+        if (res != ERRNO_OK && res != ERRNO_SHOULD_RELEASE) {
+            LOG_WARN("NodeInfo send rejected (err=%d)", res);
             return false;
+        }
         if (transmitHistory)
             transmitHistory->setLastSentToMesh(meshtastic_PortNum_NODEINFO_APP);
+        // Our NodeInfo just went on the air, so the routine broadcast is due a full interval from now
+        // rather than from the last tick - an ad-hoc send otherwise leaves the periodic copy right behind it.
+        setIntervalFromNow(
+            Default::getConfiguredOrDefaultMs(config.device.node_info_broadcast_secs, default_node_info_broadcast_secs));
         return true;
     }
     return false;
@@ -156,8 +165,17 @@ meshtastic_MeshPacket *NodeInfoModule::allocNodeInfo(bool recordHistory)
         return NULL;
     }
 
-    // Use graduated scaling based on active mesh size (10 minute base, scales with congestion coefficient)
-    uint32_t timeoutMs = Default::getConfiguredOrDefaultMsScaled(0, 10 * 60, nodeStatus->getNumOnline());
+    // Use graduated scaling based on active mesh size (30 minute base, scales with congestion coefficient)
+    uint32_t timeoutMs = Default::getConfiguredOrDefaultMsScaled(0, 30 * 60, nodeStatus->getNumOnline());
+    // A licensed station's call-sign announcement is a regulatory interval, not a preference: ham mode
+    // sets node_info_broadcast_secs to 600 s, which a set-config would otherwise clamp to an hour.
+    // Never hold such a station past its own interval, whatever the floor and the scaling say.
+    if (owner.is_licensed) {
+        const uint32_t hamMs =
+            Default::getConfiguredOrDefaultMs(config.device.node_info_broadcast_secs, default_node_info_broadcast_secs);
+        if (hamMs < timeoutMs)
+            timeoutMs = hamMs;
+    }
     uint32_t lastNodeInfo = transmitHistory ? transmitHistory->getLastSentToMeshMillis(meshtastic_PortNum_NODEINFO_APP) : 0;
     if (!shorterTimeout && lastNodeInfo && Throttle::isWithinTimespanMs(lastNodeInfo, timeoutMs)) {
         LOG_DEBUG("Skip send NodeInfo since we sent it <%us ago", timeoutMs / 1000);
@@ -179,6 +197,9 @@ meshtastic_MeshPacket *NodeInfoModule::allocNodeInfo(bool recordHistory)
         strcpy(u.id, nodeDB->getNodeId().c_str());
 
         LOG_INFO("Send owner %s/%s/%s", u.id, u.long_name, u.short_name);
+        // The framework sends its own reply, so stamp here for that path. sendOurNodeInfo() stamps
+        // after the router accepts the packet instead - a send that never went out must not throttle
+        // the next one, and the floor it would sit out is 30 minutes.
         if (recordHistory && transmitHistory)
             transmitHistory->setLastSentToMesh(meshtastic_PortNum_NODEINFO_APP);
         return allocDataProtobuf(u);

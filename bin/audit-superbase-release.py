@@ -10,116 +10,101 @@ import subprocess
 import zipfile
 from pathlib import Path
 
-BASE = "4cbba7006a9fed23cb1a778b7e62422ba96ee8bc"
-INTEGRATION_BASE = "c23e1d46ebda005cb044470977d11bb57e560195"
-POSITION_FIX = "14be478b866a21d9a4c5cf419a9a70d78e4703bb"
-REVIEWED_UPSTREAM_COMMITS = [
-    "73c41105282e3f6245714efbaad2e061f7bfa821",
-    "382980637b1a91cb9f493c8e62b682f5981aa166",
-    "42d32fcea60f2804f2fb143276e383f0fce522c8",
-    "585ce17f598ecdd11c67c6053e7e93deadf1b2a4",
-    "0c4bee7a7be5aa79c8fba1c7e1cf19e6bab42437",
-    "d482dc78a10b65573481f81c1edfe196203f1b87",
-]
-REVIEWED_UPSTREAM_SOURCES = {
-    "src/mesh/MeshService.cpp": "3f3b41cfc68321ea3aeefb0ca7a1bbf02a00c3082c5f039bc03e869c120861d2",
-    "src/mesh/MeshService.h": "009840d4a5a54d7359aeb59482b1bd4571f2ae1653c0f568ce1ef6f071d4d7fb",
-    "src/mesh/NodeDB.cpp": "ce9b4b9a8285f7e582ff20a1743c58afb57c16fbb7d9484ae18e3d3138f65d6c",
-    "src/mesh/NodeDBLegacyMigration.cpp": "a2f2fc29ad90285ca41addb0d6cd8c63bddf8c5f2ae7e97e0f989e4f4035e0f3",
-    "src/mesh/PhoneAPI.cpp": "0565888591a013b3e4ad41094028216103eca95d1bf22ee4e4a524b2fac3dd50",
-    "src/mesh/PhoneAPI.h": "11ed8f8fbbea9f4a39300a05ef28ab97abb00af0dc786471904cdeecf569775d",
-    "src/mesh/RadioInterface.cpp": "236520cc6b86b83a50bc59129636a8b38b3d68d581131d7eccff6efbccea168d",
-    "test/test_phone_api_config_dump/test_main.cpp": "e1577346dd904ce04aab994c0d7b0c05d6e9ad90c50cb02d4f4b887551263c73",
-}
-REVIEWED_POWER_SOURCES = {
-    "src/Power.cpp": "03a8b81a3b421afc5cea37c1675040944367cbc0e58c22637e8c98f135ba38c7",
-    "src/PowerStatus.h": "4d60d6529d6892e9c1f4d1a93de7d0d9a1fc1f451d8b8d9cda79ec3524d28d94",
-    "src/power/BQ25185Status.h": "15ee3d5d82cd25a4ecb33eb684052848ed1d874d8574751c5caeda8472e9d811",
-    "variants/nrf52840/muzi_base/variant.h": "ce0ff13922901680ee6dc6ace05caa15126418894e481eec9d16518a94392019",
-    "variants/nrf52840/muzi_base/variant.cpp": "e77169c30aa386d485a457c422a9c9050c4940c9c2e159f7ba74d4d76175dc37",
-    "test/test_power_status/test_main.cpp": "26cdd6c5fcf117d03329521bf120bdbb2d62b07272207d9f9490bf2ef3c5dae3",
-}
-REVIEWED_RELEASE_SOURCES = {
-    "src/mesh/RadioLibInterface.cpp": "49236f60fd390321e9904ebc296eca9473be97c8d1ced8f67f14feceea0322dd",
-    "src/modules/ExternalNotificationModule.cpp": "d6b3dc7dc6fa61253f5ccad43f830368443dd2f51d1b65498acf8b472ba7d2b7",
-    "src/modules/ExternalNotificationModule.h": "305d1e4a23009d2bda684675db240b45359b49cf51f15b6b5a4657b1af3f9fac",
-    "test/test_buzzer_mode/test_main.cpp": "f9f75aab8989ec256616b92a3759a73ef49f25a8b27f232c46431589c03888e2",
-    "test/test_superbase_radio_recovery/test_main.cpp": "d4ac056cf75b3f0420112bd5dc817836b6b6344dc2140f72577b699d8fe19bf0",
-    "src/mesh/Channels.cpp": "59cfad49b392ecc70b6d0d4c34b13fe49ddda36c826b94e2072f2a1b97f919f0",
-    "test/test_muted_source/test_main.cpp": "cfe7a16b0fec75b3a66f19f31d41a5a097f71a7c91f0a865e61d11a585b2cf71",
-}
-REVIEWED_RELIABILITY_SOURCES = {
-    "src/Power.cpp": "17ca415aab4dbb096507147733e2bad2ce94e9d57ac29d10d473f6e056a950e5",
-    "src/main.h": "a6a56c1eb1756716997333a0276962c33b8f40a651e023e527b164e1eb1f3ed8",
-    "src/mesh/NodeDB.cpp": "265d09d6d0093efc2fe42e8dd354372a8492934bd76c17425ef1d2f95cf2b772",
-    "src/mesh/WarmNodeStore.cpp": "7254a96955a7af0510f4a675276b31ca26aebe7cc751db32ff22460f5b099d47",
-    "src/platform/nrf52/NRF52Bluetooth.cpp": "7769ebbca04d57266a60020faab59181739a99c8147bffcecf4ba0a91b0cdf93",
-    "src/platform/nrf52/main-nrf52.cpp": "bdd75d46152922d2d8e9a465df06c3d9e4aec0c2de826564e33cd923e813004e",
-    "src/mesh/SX126xInterface.cpp": "a3f71352ff1d3a136201eb656fb5b6f60e4a20f252409c81fa90faa0840b9291",
-    "src/modules/PositionModule.cpp": "59c109c66e18ba73c784214bb1937a39f5db1972c2d58b9daf9a7df03a536597",
-    "test/test_nodedb_save_retry/test_main.cpp": "c37f509556efc8459148e274bee4b99ba4d87e99bd2bb14ea61ba98723c734fe",
-    "test/test_superbase_broadcasts/test_main.cpp": "5c42287b0bf88133467686a347b8e37aa46ff0c8a7381b0d55f6c89c0ca2f107",
-    "test/fixtures/nrf52_flash_quiesce.cpp": "88ac170b22cff33abf7140134af7b34d943fa03e570003f0c3efc456f964e501",
-    "bin/test-nrf52-bluetooth.py": "cc47a68887b5682d16cb1db61946cb6b3464d86ed716da02c9f71a4315129226",
-}
-REVIEWED_BATTERY_STATUS_SOURCES = {
-    "src/graphics/draw/NotificationRenderer.cpp": "a9da39c7da882be9fadd8b63237822c3610a636541eb8f4008e792acc192dced",
-    "src/Power.cpp": "f662f60ff67c3b925309174bcf97167db70063385a0bb628c0b0a55bab65ff23",
+UPSTREAM_BASE = "2d61ca6736cfcc59ee14cf7e2618779f45539038"
+PREVIOUS_RELEASE = "90410fb0992adbabe6d9973778f665c232e351fd"
+REVIEWED_CUSTOM_SOURCES = {
+    "src/AudioThread.h": "85265842d9face2a87cd38200629b25b8ab7b5e41efa3729dd18d88a8f338d84",
+    "src/Power.cpp": "fd563fa69946a054043b4d5954295a63decf7e137f02eddda4159973cb3b4c5b",
+    "src/PowerFSM.cpp": "7ae408b01ee84e145da3a7ed3ac831bc67edc1e870f4c39fb9c957074228989b",
     "src/PowerStatus.h": "2cdb841ebeb3398a59a95f65a94ca10232fd0193f33b6a0f356a13d45f167916",
+    "src/buzz/BuzzerFeedbackThread.cpp": "a43eb0a14b783fa49e3fb1f1d2a609da0c4a67201ff0ff55626c40b085598e60",
+    "src/buzz/BuzzerMode.h": "e0990949e068614493c6a03545f53dbce05961967d3717f07930dd9c1a3007f5",
+    "src/buzz/buzz.cpp": "b4bebc95b728967cef818d545fc5387e6542554b479a5b46902c84704c35285c",
+    "src/concurrency/OSThread.cpp": "db5acd384a3bf8abeb8fc8fc1fbcf3a0c8e15908b18d066329c2b0ef0b5e3d0a",
+    "src/graphics/Screen.cpp": "b6072188ed6884b856e138a2e0abd8f47bc29e7aa9e015b939a21fb71fe80854",
+    "src/graphics/Screen.h": "1e815e3cfbb656dc277a74accdaebe11115ead9dccec109aa75be8b033dedc83",
+    "src/graphics/SharedUIDisplay.cpp": "b114f841119abdfdcb31f3f8f69bb27115e6b685f4c59e7ea8fa8ce01241437a",
+    "src/graphics/draw/NotificationRenderer.cpp": "69a979e87b15f4c253fb5ce3c60eafc3666a3addb981d3248147d6ed289522bf",
+    "src/input/SuperbaseButtonState.h": "7312a3d5e8e22e620ea7685783cd60c2b841469c3cd491a741d64f0b9ab678a6",
+    "src/input/TrackballInterruptBase.cpp": "33f6a8031613d90954ea5877cfd3e67d3a367230e332a6e911575843f2272746",
+    "src/input/TrackballInterruptBase.h": "0b9274591a15cad413cbff680e4ecf646e0016acaa4ee22d079eb2fd58c98d87",
+    "src/input/TrackballInterruptImpl1.cpp": "f1a7272e3bcb86c9f44ace8684e984bdfd1eee8dbf46c01e6236ddeb5d47bfd7",
+    "src/mesh/Channels.cpp": "1c8693785f4147338c5b3f65dfbd6f95f1c3e32c3919436ef1147843e8ebf255",
+    "src/mesh/CryptoEngine.cpp": "1a85b85a360007a5089cf72b81c5d1b3f7cd781c35481cccc41d98530d63185c",
+    "src/mesh/Default.h": "91a5f3aaa4cf3bd62d375053c24c283d42f344186974e43d2ae91564150f2d97",
+    "src/mesh/LR11x0Interface.cpp": "5e656964a04081d227b05f6305c0f84ba7abe92f77c0094b9f9147474392f7a6",
+    "src/mesh/NextHopRouter.cpp": "6e200fc0e75515fac623896f48552fbfe43128049f09c72c81e2c8fcd646f6a4",
+    "src/mesh/NextHopRouter.h": "434409f03d4ea8e8d2c6feaaa21c3d3d5494f69f536a35e4e6c1b4e675bd6685",
+    "src/mesh/NodeDB.cpp": "13edf25c5137c32fd7ccbfdc834eb7880727016ef6fc6b300e2e1cb466ae787a",
+    "src/mesh/PhoneAPI.cpp": "3f99575b8e1b099f5e17c9b18b48d8b947d3295223f18c60ea2740e141be671f",
+    "src/mesh/RadioLibInterface.cpp": "2794303973e74de2af7f94fe4cd3c67f5116ae82ae21247d889af2ada6460c6d",
+    "src/mesh/ReliableRouter.cpp": "9ca9376fa4748864881d5c989e3653900d6eca9ffbba7c2f944fbc3548e02e34",
+    "src/mesh/SX126xInterface.cpp": "161a4401cc6c4f2116e199d48ffd74d73f6c15df5f6a0d4198ed23e4f68d3797",
+    "src/modules/ExternalNotificationModule.cpp": "8b85df1c032f776aa598587a8a20f845ab3bb2c2a7ebfab6c1858c7540bc40dc",
+    "src/modules/ExternalNotificationModule.h": "e759e758e2edae213789d3e582e1183ebe1b5957b7749a95c733c11dd6446e6e",
+    "src/modules/NeighborInfoModule.cpp": "d674eac1a7cceb64b0e5b2e9511259a57764bd5e1eb3c6b0b4cd0cbd5426d865",
+    "src/modules/NodeInfoModule.cpp": "38c679d5bca13b2c3a6fc35b8c80942228159d080e79537ffc17dabc2b0582b4",
+    "src/modules/NodeInfoModule.h": "de075ca3f54d56ee0804edabd0970a1bb74dd1faf9e27ee60f8eb1168951118b",
+    "src/modules/PositionModule.cpp": "2d72a836c0aeabbe874c885a55ce160c3ae4964a944ed8081e3535f61d739a7c",
+    "src/modules/PositionModule.h": "a4590d5eba3c1ebacb7297240d5a8b0e86aa5c8dced287752607ea111d43edcb",
+    "src/modules/SystemCommandsModule.cpp": "b2ba085aa4f3143bd35ddbe69e13f8d8a199779a264c2e55aea63acd3cbb76e3",
+    "src/modules/Telemetry/DeviceTelemetry.h": "a987fbbed4e8eeea77b34416cd68bfd0ae1e036044975f7e8570a3da2443a4c7",
+    "src/motion/ICM20948Sensor.cpp": "b7ff502fbbef31bc7159e5cab5da4e981751f1c1567a03c5ed1345903384eee8",
+    "src/motion/MotionSensor.h": "4b7c83bd45ab602a8a67e717db01d96a5fbfedcc4f116d7cbe69ead0b1024128",
+    "src/mqtt/MQTT.cpp": "44c720646feb21c867f015f8c7782baaeebb312ebd6287512ff1fe1164fa4372",
+    "src/platform/nrf52/NRF52Bluetooth.cpp": "87f7c7730433212f14c8aa8b266869395fc6f9dd2b9fcdb78d0e3ec91418c55d",
+    "src/platform/nrf52/NRF52Bluetooth.h": "961f79f3a325b1ddc08b7f5349a234ea6675d666c664b42f6559ed4645fe96c3",
+    "src/platform/nrf52/main-nrf52.cpp": "d9872473b9e5af72bcb8c2155bc90cbf063d9751c70661ebe2494937ef562126",
     "src/power/BQ25185Status.h": "210f4f972b53643e6b051c5de0e0e05d575dedec4332fd8b85974fbbaccad25b",
     "src/power/ChargeFault.h": "f92a787ba5cb53e97d88f84a335edb403daddf358bbe16e6fa29b952a0cf7ffc",
-    "src/platform/nrf52/NRF52Bluetooth.cpp": "6c1522c6c8ca3579d316cfaea5067698a9945663f0ac20b4dc11df6df7d464fc",
-    "src/graphics/Screen.cpp": "6d8a85f9ac173a8f5cd2698836428c04980df87cc424ac409c1d463df357f1a8",
-    "src/graphics/Screen.h": "3d9d13e9981f3843d7898da47a6f0f47de29d9276b6b5608d66631fb73064cc1",
-    "src/graphics/SharedUIDisplay.cpp": "adb2feac630abcce4002ec26ebebce630794a8abffb1364f9e06f4e44bfbe3a3",
-    "bin/test-nrf52-bluetooth.py": "fd9692086b656f9cf7577b9e4927b6f50223f6805da4f5ff478fbbedfc1389c6",
+    "test/README.md": "c5da136fe39d60709aa4a589a06af0cd4199c99c5be6629e120fb457321b7728",
     "test/fixtures/nrf52_bluetooth_lifecycle.cpp": "823a6975e43afa440cc88b9c41858c0ed781cad9c7a1bee6426980e12c6fb7f1",
-    "test/test_power_status/test_main.cpp": "705d27bcf6ec277b7d1ba709822724f992756f4fd67f7ab6a6c2328b46dee29e",
-    "test/test_superbase_navigation/test_main.cpp": "f690c66a46616f4af3df7515d7b6b65a6e56b3abc776b03ef51ab57028951d23",
-}
-REVIEWED_OCTOBER_COMMITS = [
-    "778184c7a1b91993c810558325570cdbec4cc457",
-    "a406eb30cf360ef0b1697919fcad3b9e8caf88ea",
-    "c7bc29e19a0a62cc2bed1e4087fc67e29ac25901",
-    "8c943daaca3d16bd39f9476eb2f46714541d15ad",
-    "48d0f08a283ce9caa78bbb9568b7112335bd477d",
-    "6362e05424df3dc9391daf98d24f5c6b1ad43120",
-    "f7b2d258d1aee263ca988bc9067f21142747b33d",
-    "40a01781579b42d5af8be746af1e13e1f80ce681",
-    "90844393925705c59dfaeac9faee86e94df3cd73",
-    "0af1396ea36339fc4664559d4c092d00a5f95464",
-    "023164a7ea58f34948aeb97f3395845effee193e",
-]
-REVIEWED_OCTOBER_SOURCES = {
-    "test/test_mqtt/MQTT.cpp": "83b1c6bd0aa1d91a05302d10e92ff309c6dd9f19db8bf6b757fb3880a166ef3f",
-    "src/RedirectablePrint.cpp": "023ae5c6c5a3cce56e5c20ac0477ae35da7ba04e63acf50b7156f472bf30ebd7",
-    "src/concurrency/OSThread.cpp": "0457fd7885b917079eb90dbb7e6653c179b75567eee7458e9f03b3e4d330f02c",
-    "src/concurrency/OSThread.h": "44b69379c6c31800e1a430ebe638bae37232a1f5923a400be142e6a3988f78c4",
-    "src/graphics/Screen.cpp": "6e1c98185bba7cd09743feee5cbede780938185160fb918989d88815ea45e8ae",
-    "src/graphics/draw/CompassRenderer.cpp": "f295dcde4dab9568427e306df5496c969aed90a0b9cc99191e6d10c078705b5e",
-    "src/graphics/draw/MenuHandler.cpp": "db5bfc4ce0b561d486b1f6f7f090df93e38240d01c5aec59e342ef945a2c8b35",
-    "src/main.cpp": "8f08588a3fcb6acfcaeac9d471a762f5609b7fbde92ff417c0f0aeec3ebe2c7c",
-    "src/mesh/CryptoEngine.cpp": "c05ceee41781da9330e711c8d2c337239f25b883421a2658d2e9ea243dda15e6",
-    "src/mesh/MeshService.cpp": "aae6c707c55b1ea44e8090af7e6ea3b4718202fcd950c7c8ebb65daff5f9b1b0",
-    "src/mesh/MeshTypes.h": "0d0e585f3c717250153d1109d7798999af393a2a017f21fe3c6b200d10f62675",
-    "src/mesh/NodeDB.cpp": "a8bb4aa2fdd4b78131d3b89308f6ec0a69ca4b6c99d8d6b8d2358a708b8830e8",
-    "src/mesh/NodeDB.h": "90d2ce32854d09ff93c1860f33f2c2b694d045e8a0c23393675202f6cc1779ae",
-    "src/mesh/PhoneAPI.cpp": "4870444868acd11c1f0905e3b1843d534c2bb228a40e3bacd668d83a554c337b",
-    "src/modules/AdminModule.cpp": "f3ef22aed6fe5009fe51528f0602594df8b76a27d84936184151e5502ae79534",
-    "src/modules/NeighborInfoModule.cpp": "3a65bb5b5936d4350ded70f1a3b96e08b41d2142363e0ca7205103000d8ba0ec",
-    "src/modules/NeighborInfoModule.h": "38820089a21218bd8b89124b45f01c077b2be9e3a8bed225f306f690ba0959cf",
-    "src/modules/NodeInfoModule.cpp": "1577618da11aa58656392a4657ef6367e00cb558add6456ced2feb21034c78ff",
-    "src/modules/NodeInfoModule.h": "129bb88a1f1644e8b22f27b9eba755ec73ab2bbaf154bd0aa9f5340efa18421f",
-    "src/mqtt/MQTT.cpp": "48b860f46117590170252db6e52baf0f29b4ddc26301be580d78545477ff2be9",
-    "test/test_admin_radio/test_main.cpp": "ba97bbfa001151773ade21a8dff27de6067c816e890ae02769868c228653083f",
-    "test/test_crypto/test_main.cpp": "7dc33c071cbcddff34b872ce4079b5efeb070e30269df20cb7a37d1c4a0fcc50",
-    "test/test_mesh_beacon/test_main.cpp": "d47665a6f8e022f2be7547e911f66e2e5b4f05f72aa9f8ea726b091360a92b71",
-    "test/test_mesh_module/test_main.cpp": "9771ac0815d231cdee4933899104cecf79e29f435b1496faa77d091d6b9b5284",
+    "test/fixtures/nrf52_flash_quiesce.cpp": "88ac170b22cff33abf7140134af7b34d943fa03e570003f0c3efc456f964e501",
+    "test/state-manifest.tsv": "5f5990146f3d35ea86cbc5e190851d0333b74a7189e526e98229ccf459d7bf0b",
+    "test/test_admin_radio/test_main.cpp": "55b6d03751efa136e8afd706971c1a4739f2ba59d3965b40fb5bb13bb8afa847",
+    "test/test_buzzer_mode/test_main.cpp": "f9f75aab8989ec256616b92a3759a73ef49f25a8b27f232c46431589c03888e2",
+    "test/test_gps_update_scheduling/test_main.cpp": "1353e42c5017e142b339326d046fc6be5c142ddb89c334bdd76fa5fa74501c3b",
+    "test/test_mesh_module/test_main.cpp": "9a8bff8a05e59da0c9196b1d010380e000098bd5fdc65973a39fb70c83abb739",
+    "test/test_mqtt/MQTT.cpp": "ca2d31f1fea8774f001b25b1521c62928f82c868d8f8fdebdef8a795ef9a5ef0",
+    "test/test_muted_source/test_main.cpp": "cfe7a16b0fec75b3a66f19f31d41a5a097f71a7c91f0a865e61d11a585b2cf71",
     "test/test_nodedb_save_retry/test_main.cpp": "52ff74dc833988db140afed4bcc540f82ceb1eb77f14a8f1500085b058fe90ea",
-    "test/test_phone_api_config_dump/test_main.cpp": "1271de34e09f3e10d79b8d656d4cee89d88eda7450e24fd509c1a718138451d0",
+    "test/test_phone_api_config_dump/test_main.cpp": "d42b69af97bd732ce8f267b57514040bdc0e3931d06c35b3c5a4b172ef8884d1",
+    "test/test_power_status/test_main.cpp": "705d27bcf6ec277b7d1ba709822724f992756f4fd67f7ab6a6c2328b46dee29e",
+    "test/test_radio/test_main.cpp": "890fa74a0ea41bee8157fcd77fd4426798e4939c58c32f36b808da5b3bb41190",
+    "test/test_reliable_ack_matrix/test_main.cpp": "708b93c0682521c82b440af5579f9b9e1eba2cc128b2259fb9347342c9cb1f66",
+    "test/test_superbase_broadcasts/test_main.cpp": "5c42287b0bf88133467686a347b8e37aa46ff0c8a7381b0d55f6c89c0ca2f107",
     "test/test_superbase_navigation/test_main.cpp": "2bb6baf8ce1e1ffcf9fec74368a95f9c10c78f5801a11b2f76c39df349eb583b",
+    "test/test_superbase_radio_recovery/test_main.cpp": "b90bd42a17b09e2f32229dd9aa74c61e69caefb2c67892b5fa66508677ba423d",
+}
+REVIEWED_BUILD_SOURCES = {
+    "platformio.ini": "04f7ba519880fe3dc6ce8f30b5d80a5efe0f7bb875219eecb666eda0d74942dd",
+    "version.properties": "c654658fd0a5f241bbcbf601d8f3f01ca30d746bc7e56011e70fdc14ee1bf8e4",
+    ".github/actions/setup-base/action.yml": "5b1a43c1e41c6033de219a171f72e6bac4d4df85c3248c56775a2776ed889656",
+    ".github/actions/setup-base/requirements.txt": "5b18431054b330b84dcaae35d6e330ad2d9c83609b860d704d65088000743c76",
+    ".github/actions/setup-native/action.yml": "5b3c78e1817fa436dd895d8e58cace007879d89f350a32d3db16de9d27ea369b",
+    ".github/workflows/build_firmware.yml": "b018de12ff7d458fc8792975a08a0377bf8ca38b1ae6f770bfa7c8c908462346",
+    ".github/workflows/superbase_ci.yml": "6da8a30ad9e159973c9a8cb55e612526705272dcd4f4d2e18c3a3267c2e14dc5",
+    "boards/muzi-base.json": "443d6b647b6cf44d097420c203e21f92d30efcccad38c855caca8e1bf88be18e",
+    "extra_scripts/README.md": "f0c94a6840e3fbc969c3d80b987529e72d0845028e17a9db09be5b216dca5d18",
+    "extra_scripts/disable_adafruit_usb.py": "ac256f8c537d1b9d32c0d69360ee8228be1d2ef831308c0101ab982b14de9f7d",
+    "extra_scripts/ld_response_file.py": "bee98fcc3449775cc7863ba2990ed45d95209c8b1de6b5beec337aadb5408af4",
+    "extra_scripts/nrf52_extra.py": "eeca3aeb91fae9eb6b4ded408d107a129d1f10f61c9109fd60fee6e96165cc42",
+    "extra_scripts/nrf52_lto.py": "03b7308e0a4dfd52fceb70852e5d153f16ebc696f0470754e04c16022f1913ed",
+    "extra_scripts/nrf52_warm_region.py": "80955ed531900217e5f23d58fb229b4366b12bfab64e7dabf6cbe3e2c6415187",
+    "variants/native/portduino.ini": "0cb35d6fc1af6a6a3a79c9c06e66b6bed6c0f94940ab3c29030bfdcf7cda8391",
+    "variants/native/portduino/HUB75Native.h": "0bea9d60b709736b755c288f64851f720ece480524faa2a2cd404f204e0ba62c",
+    "variants/native/portduino/malloc.h": "d70a54ef5c23b8102bf7cc2063eeae211b1b58772242f79126bca109f665aa11",
+    "variants/native/portduino/variant.h": "3e4bbe6362e2e1a12321930b5d29018b63b3bc570cda2a2ee52f270abe5c8839",
+    "variants/nrf52840/cpp_overrides/lfs_util.h": "91ded470fa175617e3248d122d8eef9fecbc19d3a181f36ebb566d2952925330",
+    "variants/nrf52840/muzi_base/platformio.ini": "32b7c8ba8efce0e73cdea5cee34f2fbf5ea39f4be7b20000f0cb9d1cfd25b5ab",
+    "variants/nrf52840/muzi_base/rfswitch.h": "b6874c44d64a0575eaf90292ff64e8a90fad5b1ca885e74b6b9888c1a3f33a01",
+    "variants/nrf52840/muzi_base/variant.cpp": "e77169c30aa386d485a457c422a9c9050c4940c9c2e159f7ba74d4d76175dc37",
+    "variants/nrf52840/muzi_base/variant.h": "33533baa3f90b14891d1e271545be598b16f0a54cda95a2f2e9eba768b237c5e",
+    "variants/nrf52840/nrf52.ini": "d6a5ddd30a5849ff453e06c7cb25a3c66bed0b2119576f162cab28b5bec18914",
+    "variants/nrf52840/nrf52840.ini": "7c7d53dea735bc4c68f0a5a3360634c9e64a7b5c2123d5fb8eae983c9e8f0c2f",
 }
 REMOVED_TARGET_PATHS = [
+    "src/platform/nrf54/",
     "src/platform/esp32/",
     "src/platform/extra_variants/",
     "src/platform/nrf54l15/",
@@ -242,197 +227,95 @@ def source_audit():
         "nrf52",
         "portduino",
     }, f"Unsupported platform sources: {platforms}"
-    reviewed_sources = {
-        **REVIEWED_UPSTREAM_SOURCES,
-        **REVIEWED_POWER_SOURCES,
-        **REVIEWED_RELEASE_SOURCES,
-        **REVIEWED_RELIABILITY_SOURCES,
-        **REVIEWED_BATTERY_STATUS_SOURCES,
-        **REVIEWED_OCTOBER_SOURCES,
-    }
-    reviewed_specs = [":(exclude)" + path for path in reviewed_sources]
+    subprocess.run(
+        ["git", "merge-base", "--is-ancestor", UPSTREAM_BASE, "HEAD"], check=True
+    )
+    subprocess.run(
+        ["git", "merge-base", "--is-ancestor", PREVIOUS_RELEASE, "HEAD"], check=True
+    )
     assert not git(
-        "diff",
-        BASE,
-        "--",
-        *preserved,
-        ":(exclude)platformio.ini",
-        *removed_specs,
-        *reviewed_specs,
-    ), "Preserved source changed"
-    for path, expected_hash in reviewed_sources.items():
+        "diff", UPSTREAM_BASE, "--", "protobufs", "src/mesh/generated"
+    ), "Protocol differs from upstream"
+    changed = set(
+        git(
+            "diff", "--name-only", UPSTREAM_BASE, "--", "src", "test", *removed_specs
+        ).splitlines()
+    )
+    assert changed == set(
+        REVIEWED_CUSTOM_SOURCES
+    ), f"Unreviewed custom delta: {changed ^ set(REVIEWED_CUSTOM_SOURCES)}"
+    for path, expected_hash in {
+        **REVIEWED_CUSTOM_SOURCES,
+        **REVIEWED_BUILD_SOURCES,
+    }.items():
         actual_hash = hashlib.sha256(
             Path(path).read_text(encoding="utf-8").encode("utf-8")
         ).hexdigest()
         assert actual_hash == expected_hash, f"Reviewed integration changed: {path}"
-    expected_platformio = git("show", BASE + ":platformio.ini") + "\n"
-    expected_platformio = expected_platformio.replace(
-        "\tpost:extra_scripts/nrf54l15_linker.py\n", ""
-    ).replace(" +<platform/extra_variants/>", "")
-    assert (
-        Path("platformio.ini").read_text() == expected_platformio
-    ), "Unreviewed build configuration change"
-    integration_paths = {
-        "src/main.cpp",
-        "src/mesh/MeshService.cpp",
-        "src/mesh/MeshService.h",
-        "src/modules/PositionModule.cpp",
-        "src/modules/PositionModule.h",
-        "src/modules/NodeInfoModule.cpp",
-        "src/modules/NodeInfoModule.h",
-        "src/modules/Telemetry/DeviceTelemetry.cpp",
-        "src/modules/Telemetry/DeviceTelemetry.h",
+    required = {
+        "src/mesh/Default.h": [
+            "#define default_position_stationary_broadcast_secs (12 * 60 * 60)"
+        ],
+        "src/mesh/ReliableRouter.cpp": ["mqttImplicitAckSeen = true"],
+        "src/mesh/NextHopRouter.cpp": ["if (p.mqttImplicitAckSeen)"],
+        "src/mqtt/MQTT.cpp": ["rememberMqttAck", "mqttAckHistoryLock"],
+        "src/modules/ExternalNotificationModule.cpp": [
+            "buzzerModeAllowsNotification",
+            "buzzerPlaybackBackend",
+            "genericAlertActive",
+            "vibraAlertActive",
+        ],
+        "src/AudioThread.h": ["RtttlOwner", "rtttlLock"],
+        "src/modules/SystemCommandsModule.cpp": [
+            "setBluetoothEnable(config.bluetooth.enabled)"
+        ],
+        "src/platform/nrf52/NRF52Bluetooth.cpp": [
+            "blebas.notify",
+            "!initialized || !config.bluetooth.enabled",
+        ],
+        "src/Power.cpp": ["decodeBQ25185ChargeFault", "decodeBQ25185Status"],
+        "src/graphics/Screen.cpp": ["chargeFaultMessage"],
+        "src/motion/ICM20948Sensor.cpp": [
+            "AK09916_mode_power_down",
+            "AK09916_mode_cont_100hz",
+        ],
+        "src/mesh/RadioLibInterface.cpp": [
+            "chipRecoveryFailures < MAX_CHIP_RECOVERY_FAILURES",
+            "if (isSending())",
+        ],
     }
-    integration_paths |= {path for path in reviewed_sources if path.startswith("src/")}
-    changed = set(
-        git(
-            "diff", "--name-only", INTEGRATION_BASE, "--", "src", *removed_specs
-        ).splitlines()
-    )
-    assert (
-        changed <= integration_paths
-    ), f"Unreviewed integration changes: {changed - integration_paths}"
-    expected_position = (
-        git("show", POSITION_FIX + ":src/modules/PositionModule.cpp") + "\n"
-    )
-    expected_position = expected_position.replace(
-        "            nodeDB->setLocalPosition(p, true);\n            return false;",
-        "            nodeDB->setLocalPosition(p, true);\n"
-        "            // The same packet is privacy-filtered after this early return.\n"
-        "            precision = getPositionPrecisionForChannel(mp.channel);\n"
-        "            return false;",
-        1,
-    )
-    assert (
-        Path("src/modules/PositionModule.cpp").read_text() == expected_position
-    ), "Position differs from reviewed fix"
-    assert not git(
-        "diff", INTEGRATION_BASE, "--", "src/mesh/Default.h"
-    ), "Custom stationary floor changed"
-    ble_paths = {
-        "src/platform/nrf52/NRF52Bluetooth.cpp",
-        "src/platform/nrf52/NRF52Bluetooth.h",
-        "src/platform/nrf52/main-nrf52.cpp",
-    }
-    nrf_changes = set(
-        git("diff", "--name-only", BASE, "--", "src/platform/nrf52").splitlines()
-    )
-    assert (
-        nrf_changes <= ble_paths
-    ), f"Unreviewed nRF52 changes: {nrf_changes - ble_paths}"
-    original_fsm = git("show", BASE + ":src/PowerFSM.cpp") + "\n"
-    expected_fsm = original_fsm.replace(
-        "    setBluetoothEnable(true);",
-        "    setBluetoothEnable(config.bluetooth.enabled);",
-        1,
-    )
-    assert (
-        Path("src/PowerFSM.cpp").read_text() == expected_fsm
-    ), "Unreviewed power-state change"
-    subprocess.run(["git", "diff", "--check", BASE, "HEAD"], check=True)
-    conflict = subprocess.run(
-        ["git", "grep", "-n", "-E", "^(<<<<<<<|>>>>>>>)", "--", ":!*.md"],
-        capture_output=True,
-        text=True,
-    )
-    assert conflict.returncode == 1, conflict.stdout
-    original = git("show", BASE + ":src/modules/ExternalNotificationModule.cpp") + "\n"
-    current = Path("src/modules/ExternalNotificationModule.cpp").read_text()
-    start = original.index(
-        "            const meshtastic_NodeInfoLite *sender = nodeDB->getMeshNode(mp.from);",
-        original.index("ProcessMessage ExternalNotificationModule::handleReceived"),
-    )
-    end_marker = "                                     : (ch.settings.has_module_settings && ch.settings.module_settings.is_muted);"
-    end = original.index(end_marker, start) + len(end_marker)
-    expected = (
-        original[:start]
-        + "            const bool isDmToUs = !isBroadcast(mp.to) && isToUs(&mp);\n            const bool is_muted = isMutedForPacket(mp);"
-        + original[end:]
-    )
-    expected = expected.replace(
-        '#include "ExternalNotificationModule.h"',
-        '#include "ExternalNotificationModule.h"\n#include "Channels.h"',
-        1,
-    )
-    unformatted_delay = (
-        "                                    : (moduleConfig.external_notification.output_ms\n"
-        "                                           ? moduleConfig.external_notification.output_ms\n"
-        "                                           : EXT_NOTIFICATION_MODULE_OUTPUT_MS);"
-    )
-    formatted_delay = (
-        "                                    : (moduleConfig.external_notification.output_ms ? moduleConfig.external_notification.output_ms\n"
-        "                                                                                    : EXT_NOTIFICATION_MODULE_OUTPUT_MS);"
-    )
-    assert expected.count(unformatted_delay) == 2
-    expected = expected.replace(unformatted_delay, formatted_delay)
-    for before, after in [
-        (
-            "if (Throttle::hasElapsed(externalTurnedOn[0], delay))",
-            "if (genericAlertActive && Throttle::hasElapsed(externalTurnedOn[0], delay))",
-        ),
-        (
-            "if (Throttle::hasElapsed(externalTurnedOn[1], delay))",
-            "if (vibraAlertActive && Throttle::hasElapsed(externalTurnedOn[1], delay))",
-        ),
-        (
-            "if (moduleConfig.external_notification.alert_message_vibra || moduleConfig.external_notification.alert_bell_vibra)",
-            "if (vibraAlertActive)",
-        ),
-        (
-            "    stopBuzzerNow();\n    // Turn off all outputs",
-            "    stopBuzzerNow();\n    genericAlertActive = false;\n    vibraAlertActive = false;\n    // Turn off all outputs",
-        ),
-        (
-            "                setExternalState(0, true);",
-            "                genericAlertActive = true;\n                setExternalState(0, true);",
-        ),
-        (
-            "void ExternalNotificationModule::triggerVibraOutput()\n{",
-            "void ExternalNotificationModule::triggerVibraOutput()\n{\n    vibraAlertActive = true;",
-        ),
-        (
-            "        setExternalState(0, true);",
-            "        genericAlertActive = true;\n        setExternalState(0, true);",
-        ),
-    ]:
-        # Match complete lines so the different indentation levels remain distinct.
-        before_lines = "\n" + before + "\n" if before.startswith(" ") else before
-        after_lines = "\n" + after + "\n" if before.startswith(" ") else after
-        assert expected.count(before_lines) == 1, before
-        expected = expected.replace(before_lines, after_lines, 1)
-    assert (
-        current == expected
-    ), "Custom buzzer/RTTTL code changed beyond reviewed notification fixes"
-    assert (
-        "uses: actions/checkout"
-        not in Path(".github/actions/setup-base/action.yml").read_text()
-    ), "Nested checkout regression"
+    for path, markers in required.items():
+        text = Path(path).read_text()
+        assert all(
+            marker in text for marker in markers
+        ), f"Custom behavior missing: {path}"
     for backend in ["SX126x", "LR11x0"]:
         text = Path(f"src/mesh/{backend}Interface.cpp").read_text()
         pos = text.index("RX offline for periodic retry")
         assert "rxOffline = true;" in text[pos : pos + 180], backend
         pos = text.index(f"bool {backend}Interface<T>::reconfigure()")
         assert "return !rxOffline;" in text[pos : text.index("\n}", pos)]
+    assert (
+        "uses: actions/checkout"
+        not in Path(".github/actions/setup-base/action.yml").read_text()
+    ), "Nested checkout regression"
+    subprocess.run(["git", "diff", "--check", PREVIOUS_RELEASE, "HEAD"], check=True)
+    conflict = subprocess.run(
+        ["git", "grep", "-n", "-E", "^(<<<<<<<|>>>>>>>)", "--", ":!*.md"],
+        capture_output=True,
+        text=True,
+    )
+    assert conflict.returncode == 1, conflict.stdout
     return {
         "source_sha": git("rev-parse", "HEAD"),
-        "baseline": BASE,
-        "preserved_paths": preserved,
-        "integration_baseline": INTEGRATION_BASE,
-        "integration_paths": sorted(integration_paths),
+        "upstream_base": UPSTREAM_BASE,
+        "previous_release": PREVIOUS_RELEASE,
         "scope": "muzi-base only",
-        "custom_notification_delta": "mute predicate and independent output activation",
         "source_audit": "PASS",
-        "reviewed_upstream_commits": REVIEWED_UPSTREAM_COMMITS,
-        "reviewed_upstream_sources": REVIEWED_UPSTREAM_SOURCES,
-        "reviewed_power_sources": REVIEWED_POWER_SOURCES,
-        "reviewed_release_sources": REVIEWED_RELEASE_SOURCES,
-        "reviewed_reliability_sources": REVIEWED_RELIABILITY_SOURCES,
-        "reviewed_battery_status_sources": REVIEWED_BATTERY_STATUS_SOURCES,
-        "reviewed_upstream_frontier": "2d61ca6736cfcc59ee14cf7e2618779f45539038",
-        "reviewed_october_commits": REVIEWED_OCTOBER_COMMITS,
-        "reviewed_october_sources": REVIEWED_OCTOBER_SOURCES,
+        "integration": "Full upstream ancestry with reviewed Superbase custom delta",
+        "reviewed_custom_sources": REVIEWED_CUSTOM_SOURCES,
+        "reviewed_build_sources": REVIEWED_BUILD_SOURCES,
         "removed_unsupported_paths": REMOVED_TARGET_PATHS,
-        "build_config_delta": "Remove unused nRF54 linker hook and extra board-variant source filter",
     }
 
 
@@ -446,7 +329,7 @@ def package_audit(directory, sha):
 
     manifest_path = one("firmware-muzi-base-*.mt.json")
     meta = json.loads(manifest_path.read_text())
-    assert meta["version"] == "2.8.0." + sha[:7], meta["version"]
+    assert meta["version"] == "2.8.2." + sha[:7], meta["version"]
     assert (
         meta["platformioTarget"] == "muzi-base"
         and meta["mcu"] == "nrf52840"

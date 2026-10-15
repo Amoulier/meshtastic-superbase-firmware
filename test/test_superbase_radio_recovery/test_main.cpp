@@ -30,7 +30,11 @@ class RecoveryRadio : public RadioLibInterface
         else
             rxOffline = true;
     }
-    void resetAGC() override { ++agcResets; }
+    bool resetAGC() override
+    {
+        ++agcResets;
+        return true;
+    }
     bool isChannelActive() override { return false; }
     bool isActivelyReceiving() override { return false; }
     uint32_t getPacketTime(uint32_t, bool) override { return 0; }

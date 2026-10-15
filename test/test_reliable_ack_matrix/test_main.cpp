@@ -1,6 +1,7 @@
 // ReliableRouter ACK/NAK decision matrix: which ACK or NAK sniffReceived() emits per inbound
 // shape, retransmission bookkeeping, the #11502 implicit ACK for our own overheard opaque DM
-// (Group 5b drives the real OPAQUE_RELAY_ONLY ingress path), and the pending-timer extensions.
+// (Group 5b drives the real OPAQUE_RELAY_ONLY ingress path), the pending-timer extensions, and the
+// ack proof verdict reported to the phone (Group 4b).
 // Harness copied from test_nexthop_routing (ReliableRouterTestShim + MockRoutingModule).
 
 #include "MeshTypes.h" // before TestUtil.h: provides NodeNum etc.
@@ -16,7 +17,12 @@
 #include "mesh/RadioInterface.h"
 #include "mesh/ReliableRouter.h"
 #include "mesh/Throttle.h"
+#include "mesh/mesh-pb-constants.h"
 #include "modules/RoutingModule.h"
+#if !(MESHTASTIC_EXCLUDE_PKI)
+#include "mesh/AckProof.h"
+#include "mesh/CryptoEngine.h"
+#endif
 #include <cstdio>
 #include <cstring>
 #include <list>
@@ -54,6 +60,12 @@ class MockNodeDB : public NodeDB
         testNodes.push_back(node);
         meshNodes = &testNodes;
         numMeshNodes = testNodes.size();
+    }
+
+    void addNodeWithKey(NodeNum num, const uint8_t *publicKey)
+    {
+        addNode(num, 32);
+        memcpy(testNodes.back().public_key.bytes, publicKey, 32);
     }
 
     std::vector<meshtastic_NodeInfoLite> testNodes;
@@ -666,8 +678,7 @@ void test_lora_ack_stops_message_originally_marked_mqtt(void)
 
 void test_broadcast_without_ack_reports_max_retransmit(void)
 {
-    auto original =
-        makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, NODENUM_BROADCAST, 1, /*wantAck=*/true);
+    auto original = makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, NODENUM_BROADCAST, 1, /*wantAck=*/true);
     reliableShim->seedRetry(original, NextHopRouter::NUM_RELIABLE_RETX);
 
     reliableShim->expireRetry(kLocalNode, original.id);
@@ -679,8 +690,7 @@ void test_broadcast_without_ack_reports_max_retransmit(void)
 
 void test_broadcast_marked_mqtt_without_ack_reports_max_retransmit(void)
 {
-    auto original =
-        makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, NODENUM_BROADCAST, 1, /*wantAck=*/true);
+    auto original = makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, NODENUM_BROADCAST, 1, /*wantAck=*/true);
     original.transport_mechanism = meshtastic_MeshPacket_TransportMechanism_TRANSPORT_MQTT;
     reliableShim->seedRetry(original, NextHopRouter::NUM_RELIABLE_RETX);
 
@@ -692,8 +702,7 @@ void test_broadcast_marked_mqtt_without_ack_reports_max_retransmit(void)
 
 void test_broadcast_lora_implicit_ack_stops_retransmissions(void)
 {
-    auto original =
-        makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, NODENUM_BROADCAST, 1, /*wantAck=*/true);
+    auto original = makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, NODENUM_BROADCAST, 1, /*wantAck=*/true);
     reliableShim->seedRetry(original, NextHopRouter::NUM_RELIABLE_RETX);
 
     meshtastic_MeshPacket overheard = original;
@@ -710,8 +719,7 @@ void test_broadcast_lora_implicit_ack_stops_retransmissions(void)
 
 void test_broadcast_mqtt_implicit_ack_omits_later_max_retransmit(void)
 {
-    auto original =
-        makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, NODENUM_BROADCAST, 1, /*wantAck=*/true);
+    auto original = makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, NODENUM_BROADCAST, 1, /*wantAck=*/true);
     reliableShim->seedRetry(original, NextHopRouter::NUM_RELIABLE_RETX);
 
     auto ack = makeDecodedPacket(meshtastic_PortNum_ROUTING_APP, kLocalNode, kLocalNode, 1);
@@ -727,8 +735,7 @@ void test_broadcast_mqtt_implicit_ack_omits_later_max_retransmit(void)
 
 void test_duplicate_mqtt_implicit_acks_remain_idempotent_at_timeout(void)
 {
-    auto original =
-        makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, NODENUM_BROADCAST, 1, /*wantAck=*/true);
+    auto original = makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, NODENUM_BROADCAST, 1, /*wantAck=*/true);
     reliableShim->seedRetry(original, NextHopRouter::NUM_RELIABLE_RETX);
 
     auto ack = makeDecodedPacket(meshtastic_PortNum_ROUTING_APP, kLocalNode, kLocalNode, 1);
@@ -745,8 +752,7 @@ void test_duplicate_mqtt_implicit_acks_remain_idempotent_at_timeout(void)
 
 void test_mismatched_mqtt_ack_does_not_hide_failure(void)
 {
-    auto original =
-        makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, NODENUM_BROADCAST, 1, /*wantAck=*/true);
+    auto original = makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, NODENUM_BROADCAST, 1, /*wantAck=*/true);
     reliableShim->seedRetry(original, NextHopRouter::NUM_RELIABLE_RETX);
 
     auto ack = makeDecodedPacket(meshtastic_PortNum_ROUTING_APP, kLocalNode, kLocalNode, 1);
@@ -762,8 +768,7 @@ void test_mismatched_mqtt_ack_does_not_hide_failure(void)
 
 void test_mqtt_ack_just_before_timeout_wins(void)
 {
-    auto original =
-        makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, NODENUM_BROADCAST, 1, /*wantAck=*/true);
+    auto original = makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, NODENUM_BROADCAST, 1, /*wantAck=*/true);
     reliableShim->seedRetry(original, NextHopRouter::NUM_RELIABLE_RETX);
 
     auto ack = makeDecodedPacket(meshtastic_PortNum_ROUTING_APP, kLocalNode, kLocalNode, 1);
@@ -777,8 +782,7 @@ void test_mqtt_ack_just_before_timeout_wins(void)
 
 void test_mqtt_ack_after_timeout_does_not_rewrite_failure(void)
 {
-    auto original =
-        makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, NODENUM_BROADCAST, 1, /*wantAck=*/true);
+    auto original = makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, NODENUM_BROADCAST, 1, /*wantAck=*/true);
     reliableShim->seedRetry(original, NextHopRouter::NUM_RELIABLE_RETX);
     reliableShim->expireRetry(kLocalNode, original.id);
 
@@ -806,6 +810,120 @@ void test_direct_mqtt_implicit_ack_preserves_relayed_status_at_timeout(void)
     TEST_ASSERT_EQUAL_UINT32(0, mockRoutingModule->ackNaks.size());
     TEST_ASSERT_EQUAL_UINT32(0, reliableShim->pendingCount());
 }
+
+// ===========================================================================
+// Group 4b - the ack proof verdict ackProofStatusFor() reports, which MeshService::handleFromRadio()
+// stamps onto MeshPacket.ack_proof_status for the phone. VALID must mean "the node we addressed
+// received it", so a proof minted by any other keyed peer reads ABSENT, never VALID. The verdict is
+// keyed to the ack that carried it, so every other packet delivered to the phone reads ABSENT. The
+// ingress clear is covered in test_packet_signing (C-group).
+// ===========================================================================
+
+#if !(MESHTASTIC_EXCLUDE_PKI)
+struct TestIdentity {
+    uint8_t pub[32];
+    uint8_t priv[32];
+};
+
+static TestIdentity makeTestIdentity()
+{
+    TestIdentity id;
+    crypto->generateKeyPair(id.pub, id.priv);
+    return id;
+}
+
+static void actAs(const TestIdentity &id)
+{
+    uint8_t priv[32];
+    memcpy(priv, id.priv, sizeof(priv));
+    crypto->setDHPrivateKey(priv);
+}
+
+/** A success ack from `from` for `requestId`, carrying a proof `from` mints against `proofPeer`. */
+static meshtastic_MeshPacket makeProvenAck(NodeNum from, PacketId requestId, const TestIdentity &author, const uint8_t *proofPeer)
+{
+    auto ack = makeDecodedPacket(meshtastic_PortNum_ROUTING_APP, from, kLocalNode, 1);
+    ack.decoded.request_id = requestId;
+    meshtastic_Routing routing = meshtastic_Routing_init_zero;
+    routing.which_variant = meshtastic_Routing_error_reason_tag;
+    routing.error_reason = meshtastic_Routing_Error_NONE;
+    ack.decoded.payload.size =
+        pb_encode_to_bytes(ack.decoded.payload.bytes, sizeof(ack.decoded.payload.bytes), &meshtastic_Routing_msg, &routing);
+    TEST_ASSERT_GREATER_THAN(0, ack.decoded.payload.size);
+    actAs(author);
+    TEST_ASSERT_TRUE(ackProofAttachWithKey(&ack, proofPeer));
+    return ack;
+}
+
+static meshtastic_MeshPacket_AckProofStatus sniffAck(const meshtastic_MeshPacket &ack, const TestIdentity &local)
+{
+    actAs(local);
+    meshtastic_Routing routing = meshtastic_Routing_init_zero;
+    routing.error_reason = meshtastic_Routing_Error_NONE;
+    reliableShim->sniffForTest(&ack, &routing);
+    return reliableShim->ackProofStatusFor(ack);
+}
+
+void test_ack_proof_from_the_addressed_node_reports_valid(void)
+{
+    const TestIdentity local = makeTestIdentity();
+    const TestIdentity remote = makeTestIdentity();
+    mockNodeDB->addNodeWithKey(kRemoteNode, remote.pub);
+    auto original = makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, kRemoteNode, 1, /*wantAck=*/true);
+    reliableShim->seedRetry(original, NextHopRouter::NUM_RELIABLE_UNICAST_ATTEMPTS);
+
+    auto ack = makeProvenAck(kRemoteNode, original.id, remote, local.pub);
+
+    TEST_ASSERT_EQUAL(meshtastic_MeshPacket_AckProofStatus_ACK_PROOF_VALID, sniffAck(ack, local));
+}
+
+void test_ack_proof_that_fails_to_verify_reports_invalid(void)
+{
+    const TestIdentity local = makeTestIdentity();
+    const TestIdentity remote = makeTestIdentity();
+    const TestIdentity other = makeTestIdentity();
+    mockNodeDB->addNodeWithKey(kRemoteNode, remote.pub);
+    auto original = makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, kRemoteNode, 1, /*wantAck=*/true);
+    reliableShim->seedRetry(original, NextHopRouter::NUM_RELIABLE_UNICAST_ATTEMPTS);
+
+    // Minted under a secret the remote shares with someone else, so it cannot verify against ours.
+    auto ack = makeProvenAck(kRemoteNode, original.id, remote, other.pub);
+
+    TEST_ASSERT_EQUAL(meshtastic_MeshPacket_AckProofStatus_ACK_PROOF_INVALID, sniffAck(ack, local));
+}
+
+void test_ack_proof_from_a_third_peer_reports_absent(void)
+{
+    const TestIdentity local = makeTestIdentity();
+    const TestIdentity remote = makeTestIdentity();
+    const TestIdentity third = makeTestIdentity();
+    mockNodeDB->addNodeWithKey(kRemoteNode, remote.pub);
+    mockNodeDB->addNodeWithKey(kThirdNode, third.pub);
+    auto original = makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, kRemoteNode, 1, /*wantAck=*/true);
+    reliableShim->seedRetry(original, NextHopRouter::NUM_RELIABLE_UNICAST_ATTEMPTS);
+
+    // A proof that verifies under the third peer's own key, for a packet that went to the remote.
+    auto ack = makeProvenAck(kThirdNode, original.id, third, local.pub);
+
+    TEST_ASSERT_EQUAL(meshtastic_MeshPacket_AckProofStatus_ACK_PROOF_ABSENT, sniffAck(ack, local));
+}
+
+void test_ack_proof_verdict_is_reported_only_for_its_own_ack(void)
+{
+    const TestIdentity local = makeTestIdentity();
+    const TestIdentity remote = makeTestIdentity();
+    mockNodeDB->addNodeWithKey(kRemoteNode, remote.pub);
+    auto original = makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kLocalNode, kRemoteNode, 1, /*wantAck=*/true);
+    reliableShim->seedRetry(original, NextHopRouter::NUM_RELIABLE_UNICAST_ATTEMPTS);
+    auto ack = makeProvenAck(kRemoteNode, original.id, remote, local.pub);
+    TEST_ASSERT_EQUAL(meshtastic_MeshPacket_AckProofStatus_ACK_PROOF_VALID, sniffAck(ack, local));
+
+    // Arrives claiming VALID; the phone must see ABSENT, because we reached no verdict for it.
+    auto spoofed = makeDecodedPacket(meshtastic_PortNum_TEXT_MESSAGE_APP, kRemoteNode, kLocalNode, 1);
+    spoofed.ack_proof_status = meshtastic_MeshPacket_AckProofStatus_ACK_PROOF_VALID;
+    TEST_ASSERT_EQUAL(meshtastic_MeshPacket_AckProofStatus_ACK_PROOF_ABSENT, reliableShim->ackProofStatusFor(spoofed));
+}
+#endif
 
 // ===========================================================================
 // Group 5 - implicit ACK for our own overheard DM through shouldFilterReceived. This is the
@@ -1071,6 +1189,14 @@ void setup()
     RUN_TEST(test_mqtt_ack_just_before_timeout_wins);
     RUN_TEST(test_mqtt_ack_after_timeout_does_not_rewrite_failure);
     RUN_TEST(test_direct_mqtt_implicit_ack_preserves_relayed_status_at_timeout);
+
+#if !(MESHTASTIC_EXCLUDE_PKI)
+    printf("\n=== ack proof verdict reported to the phone ===\n");
+    RUN_TEST(test_ack_proof_from_the_addressed_node_reports_valid);
+    RUN_TEST(test_ack_proof_that_fails_to_verify_reports_invalid);
+    RUN_TEST(test_ack_proof_from_a_third_peer_reports_absent);
+    RUN_TEST(test_ack_proof_verdict_is_reported_only_for_its_own_ack);
+#endif
 
     printf("\n=== implicit ACK for our own overheard DM ===\n");
     RUN_TEST(test_overheard_own_dm_rebroadcast_mints_implicit_ack);

@@ -29,7 +29,7 @@ Meshtastic is an open-source LoRa mesh networking project for long-range, low-po
 This fork maintains only **MuziWorks Superbase** (`muzi-base`, nRF52840, SX1262).
 `superbase-native-tests` is a Linux host environment for regression testing, not a supported physical target.
 Other upstream architectures may appear in shared source conditionals; their board definitions and builds are not maintained here.
-Integrate upstream fixes selectively, preserving MQTT implicit ACK, DMs Only buzzer policy, RTTTL ownership,
+Track the full official develop base for this target, preserving MQTT implicit ACK, DMs Only buzzer policy, RTTTL ownership,
 runtime Bluetooth, navigation, the 12-hour stationary floor and GPS/display/IMU power behavior.
 Do not reintroduce removed hardware targets, packaging or generic release workflows.
 
@@ -449,7 +449,7 @@ Key defines in variant.h:
 - Regenerate with `bin/regen-protos.sh`
 - Message types prefixed with `meshtastic_`
 - Nanopb `.options` files control field sizes and encoding
-- **Never edit or commit files under `src/mesh/generated/`.** They are regenerated from the [`meshtastic/protobufs`](https://github.com/meshtastic/protobufs) submodule by upstream protobuf automation (this fork has no `update_protobufs.yml` workflow) and any hand edits will be overwritten - guaranteed merge conflict on the next sync. To change a wire format, open a PR against the protobufs repo first; the workflow then re-runs `bin/regen-protos.sh` and opens a PR here with the regenerated sources; this fork must selectively adopt the upstream update.
+- **Never edit or commit files under `src/mesh/generated/`.** They are regenerated from the [`meshtastic/protobufs`](https://github.com/meshtastic/protobufs) submodule by upstream protobuf automation (this fork has no `update_protobufs.yml` workflow) and any hand edits will be overwritten - guaranteed merge conflict on the next sync. To change a wire format, open a PR against the protobufs repo first; the workflow then re-runs `bin/regen-protos.sh` and opens a PR here with the regenerated sources; this fork adopts the upstream generated files without hand edits.
 
 ### Conditional Compilation
 
